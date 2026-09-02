@@ -1,30 +1,33 @@
 # FlowCart OS
 
 FlowCart OS is a production-style platform for managing multi-warehouse
-orders and fulfilment. The project is being built incrementally, with a
-working frontend, Go API, PostgreSQL infrastructure, and initial SaaS schema.
+orders and fulfilment. The current foundation includes a Next.js frontend, a
+Go API, PostgreSQL infrastructure, initial SaaS tables, and authentication.
 
 ## Current Stack
 
-- Next.js with React and TypeScript
+- Next.js 16 with React and TypeScript
 - Tailwind CSS
-- Go with Chi and the standard `net/http` package
-- PostgreSQL 18.6 for local infrastructure
+- Go with Chi, pgx/pgxpool, and standard `net/http`
+- PostgreSQL 18.6 in Docker
+- `github.com/golang-migrate/migrate/v4`
+- Argon2id passwords and JWT access tokens
 
 ## Current Status
 
-The current milestone includes:
+Implemented:
 
-- A Next.js frontend at `http://localhost:3000`
-- A Go HTTP API at `http://localhost:8081`
-- Frontend API status reporting
-- A working `GET /health` endpoint
-- A Docker PostgreSQL service exposed at host port `5433`
-- An explicit Go migration command for the initial database schema
+- Frontend at `http://localhost:3000`
+- Go API at `http://localhost:8081`
+- PostgreSQL Docker service on host port `5433`, container port `5432`
+- Explicit versioned database migrations
+- Register, login, refresh, logout, and protected `/me` authentication routes
+- HttpOnly refresh-cookie sessions with rotation
+- Health endpoint that verifies database connectivity
 
-The current schema contains `users`, `organizations`, and
-`organization_members`. Authentication APIs, passwords, JWT, registration,
-login, products, warehouses, inventory, orders, workers, and Redis are not
+Authentication is identity-only. Organization authorization and RBAC are not
+implemented. Email verification, password reset, MFA, OAuth/social login,
+products, warehouses, inventory, orders, Redis, workers, and payments are not
 implemented yet.
 
 ## Repository Structure
@@ -35,15 +38,12 @@ flowcart/
 │   ├── api/
 │   │   ├── cmd/migrate/
 │   │   ├── cmd/server/
-│   │   ├── migrations/
-│   │   └── internal/
-│   │       ├── config/
-│   │       ├── database/
-│   │       └── httpapi/
-│   └── web/
-│       └── src/app/
+│   │   ├── internal/auth/
+│   │   └── migrations/
+│   └── web/src/app/
 ├── docs/
 │   ├── architecture.md
+│   ├── authentication.md
 │   ├── database.md
 │   ├── decisions.md
 │   └── development.md
@@ -55,26 +55,12 @@ flowcart/
 - Node.js and npm
 - Go
 - Windows PowerShell
-- Docker Desktop with the Linux engine running
+- Docker Desktop with its Linux engine running
 
-## Run the Frontend
+The existing local PostgreSQL installation uses port `5432`. Do not stop or
+modify it. FlowCart Docker PostgreSQL uses `5433:5432`.
 
-```powershell
-cd apps\web
-npm run dev
-```
-
-Open `http://localhost:3000`.
-
-## Run PostgreSQL
-
-The existing local PostgreSQL installation uses host port `5432`. Do not stop
-or modify it. FlowCart's Docker PostgreSQL uses host port `5433`, mapped to
-container port `5432`:
-
-```text
-Windows host:5433 -> PostgreSQL container:5432
-```
+## Start PostgreSQL
 
 From the project root:
 
@@ -84,7 +70,7 @@ docker compose ps
 docker compose logs postgres
 ```
 
-To stop the service:
+Stop the service without deleting its volume:
 
 ```powershell
 docker compose down
@@ -92,50 +78,52 @@ docker compose down
 
 ## Run Migrations
 
-From `apps/api` in PowerShell:
+From `apps/api`:
 
 ```powershell
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
 go run ./cmd/migrate up
 ```
 
-Roll back the latest migration with:
+Roll back the latest migration:
 
 ```powershell
 go run ./cmd/migrate down
 ```
 
-Migrations are explicit and are not run automatically when the HTTP server
-starts. The current migration files are
-`000001_core_saas_tables.up.sql` and
-`000001_core_saas_tables.down.sql`.
+Migrations are explicit and are not run by server startup.
 
 ## Run the Backend
 
-In a separate PowerShell window:
+From `apps/api`:
 
 ```powershell
-cd apps\api
 $env:PORT="8081"
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
+$env:JWT_SECRET="local-development-secret-change-me"
+$env:APP_ENV="development"
 go run ./cmd/server
 ```
 
-The backend runs at `http://localhost:8081`.
+`ACCESS_TOKEN_TTL` defaults to `15m` and `REFRESH_TOKEN_TTL` defaults to `168h`.
 
-Port `8080` is intentionally unavailable on this development machine because
-Oracle TNS Listener is using it. The backend port remains configurable through
-the `PORT` environment variable.
+## Run the Frontend
 
-## Health Endpoint
+From `apps/web`:
 
-Request:
+```powershell
+npm run dev
+```
+
+Open `http://localhost:3000`. The frontend uses `NEXT_PUBLIC_API_URL`, keeps
+access tokens in runtime memory, and uses credentials for refresh-cookie
+requests.
+
+## Health
 
 ```text
 GET http://localhost:8081/health
 ```
-
-Response when PostgreSQL is available:
 
 ```json
 {
@@ -145,10 +133,12 @@ Response when PostgreSQL is available:
 }
 ```
 
-The Go API requires `DATABASE_URL` during startup and checks PostgreSQL
-connectivity for each health request. The frontend uses `NEXT_PUBLIC_API_URL`
-to locate this endpoint.
+## Authentication Routes
 
-## Next Milestone
+- `POST /api/v1/auth/register`
+- `POST /api/v1/auth/login`
+- `POST /api/v1/auth/refresh`
+- `POST /api/v1/auth/logout`
+- `GET /api/v1/auth/me`
 
-The next milestone is authentication and application business features.
+See [docs/authentication.md](docs/authentication.md) for security details.

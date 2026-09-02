@@ -2,53 +2,53 @@
 
 ## Current Architecture
 
-FlowCart currently has a small browser-to-API-to-database architecture:
-
 ```text
 Browser
-  -> Next.js / React / TypeScript
-  -> HTTP
-  -> Go / Chi
+  -> Next.js / React / TypeScript / Tailwind
+  -> HTTP with credentialed development CORS
+  -> Go / Chi / net/http
+  -> Authentication handler
+  -> Authentication service
+  -> Authentication repository
   -> pgxpool
   -> PostgreSQL 18.6
 ```
 
-The frontend uses Next.js, React, TypeScript, and Tailwind CSS. It calls the Go
-HTTP API using the URL configured by `NEXT_PUBLIC_API_URL`.
+The browser talks to the Go API at `http://localhost:8081`. The frontend runs
+at `http://localhost:3000` and gets the API base URL from
+`NEXT_PUBLIC_API_URL`.
 
-The Go backend uses Chi, standard `net/http`, and `pgxpool` from pgx. It creates
-and pings a PostgreSQL connection pool during startup. The current API surface
-contains one endpoint:
+The Go API creates a PostgreSQL pool at startup and refuses to start if the
+connection cannot be established. The health endpoint pings the database.
 
-- `GET /health` pings PostgreSQL and returns the API status, service name, and
-  database status as JSON. It returns a non-200 response when the database is
-  unavailable.
+Authentication is separated into handler, service, repository, password, token,
+and middleware responsibilities. Authentication proves identity; organization
+authorization and RBAC are future concerns.
 
-The local frontend runs on `http://localhost:3000`. The Go API runs on
-`http://localhost:8081` because port `8080` is occupied by Oracle TNS Listener
-on the Windows development machine. The backend port remains configurable
-through `PORT`.
+## Authentication Flow
 
-The existing local PostgreSQL installation uses host port `5432`. FlowCart's
-Docker PostgreSQL uses host port `5433`, mapped to container port `5432`. The
-connection URL comes from `DATABASE_URL`.
+Register and login hash passwords with Argon2id, create a short-lived HS256 JWT
+access token, create a refresh session, and set the opaque refresh token in an
+HttpOnly cookie. Refresh hashes the cookie value, rotates the session
+transactionally, revokes the old session, and sends a replacement cookie.
+`/me` validates the Bearer JWT through middleware and loads the current user.
 
-## Database Schema
+## Database and Migrations
 
-Schema changes use explicit versioned SQL migrations through
-`github.com/golang-migrate/migrate/v4`. The initial migration creates
-`users`, `organizations`, and `organization_members`.
+PostgreSQL Docker uses host port `5433` mapped to container port `5432`. The
+existing local PostgreSQL installation on port `5432` is not modified.
 
-The migration tool also maintains `schema_migrations`. This is migration-tool
-metadata, not an application domain table.
+Versioned SQL migrations use `github.com/golang-migrate/migrate/v4` and are run
+explicitly through `apps/api/cmd/migrate`. The current schema includes
+`users`, `organizations`, `organization_members`, and `auth_sessions`.
+`schema_migrations` is migration-tool metadata, not a domain table.
 
-The schema uses PostgreSQL's `pgcrypto` extension and `gen_random_uuid()` for
-UUID defaults. `organization_members.organization_id` references
-`organizations.id ON DELETE CASCADE`, and `organization_members.user_id`
-references `users.id ON DELETE CASCADE`.
+The authentication migration adds a case-insensitive unique index on
+`LOWER(users.email)`, `users.password_hash`, and refresh-session persistence.
+The `pgcrypto` extension provides `gen_random_uuid()` defaults.
 
 ## Future Phases
 
-Passwords, authentication, JWT, registration, login, products, warehouses,
-inventory, orders, Redis, workers, and AWS infrastructure are future phases.
-No authentication or business APIs are implemented.
+Email verification, password reset, MFA, OAuth/social login, organization
+authorization/RBAC, products, warehouses, inventory, orders, Redis, workers,
+payments, and AWS infrastructure are not implemented.

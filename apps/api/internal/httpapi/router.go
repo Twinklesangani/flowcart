@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"flowcart/apps/api/internal/auth"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -15,7 +16,7 @@ type healthResponse struct {
 	Database string `json:"database"`
 }
 
-func NewRouter(pool *pgxpool.Pool) http.Handler {
+func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) http.Handler {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Logger)
@@ -23,6 +24,14 @@ func NewRouter(pool *pgxpool.Pool) http.Handler {
 	router.Use(corsMiddleware)
 
 	router.Get("/health", healthHandler(pool))
+	authHandler := auth.NewHandler(authService, appEnv == "production")
+	router.Route("/api/v1/auth", func(router chi.Router) {
+		router.Post("/register", authHandler.Register)
+		router.Post("/login", authHandler.Login)
+		router.Post("/refresh", authHandler.Refresh)
+		router.Post("/logout", authHandler.Logout)
+		router.With(authService.Authenticate).Get("/me", authHandler.Me)
+	})
 
 	return router
 }
@@ -57,6 +66,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 			writer.Header().Set("Vary", "Origin")
 			writer.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		}
 
 		if request.Method == http.MethodOptions {

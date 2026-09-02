@@ -6,37 +6,12 @@
 C:\Users\TWINKLE SANGANI\OneDrive\Desktop\flowcart
 ```
 
-Open PowerShell at the project root before running the commands below.
+Prerequisites are Node.js/npm, Go, Windows PowerShell, and Docker Desktop with
+the Linux engine running. The existing local PostgreSQL uses port `5432`; do
+not stop or modify it. FlowCart Docker PostgreSQL uses host `5433` and
+container `5432`.
 
-## Prerequisites
-
-- Node.js and npm
-- Go
-- Docker Desktop with the Linux engine running
-
-The existing local PostgreSQL installation uses port `5432`. Do not stop or
-modify it.
-
-## Run the Frontend
-
-```powershell
-cd apps\web
-npm run dev
-```
-
-Frontend URL: `http://localhost:3000`
-
-The frontend reads the backend URL from `NEXT_PUBLIC_API_URL`. Local
-development uses `http://localhost:8081`.
-
-## Run PostgreSQL
-
-FlowCart's Docker PostgreSQL uses host port `5433` and maps it to container
-port `5432`:
-
-```text
-localhost:5433 -> postgres container:5432
-```
+## Start PostgreSQL
 
 From the project root:
 
@@ -46,71 +21,72 @@ docker compose ps
 docker compose logs postgres
 ```
 
-Stop the service with:
+Stop it with `docker compose down`. Do not delete the Docker volume.
+
+## Migrations
+
+From `apps/api`:
 
 ```powershell
-docker compose down
-```
-
-The Compose service is named `postgres`, uses PostgreSQL `18.6`, and stores
-data in the named volume `flowcart_postgres_data`.
-
-## Run Migrations
-
-Migrations are explicit and are not run automatically by the HTTP server. From
-`apps/api` in PowerShell:
-
-```powershell
-cd apps\api
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
 go run ./cmd/migrate up
-```
-
-Roll back the latest migration with:
-
-```powershell
 go run ./cmd/migrate down
-```
-
-Restore the schema after a local rollback with:
-
-```powershell
 go run ./cmd/migrate up
 ```
 
-The current migration files are:
+Migrations are explicit and are not run by HTTP server startup.
 
-```text
-migrations/000001_core_saas_tables.up.sql
-migrations/000001_core_saas_tables.down.sql
-```
-
-## Run the Backend
-
-In a separate PowerShell window:
+## Start the Backend
 
 ```powershell
 cd apps\api
 $env:PORT="8081"
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
+$env:JWT_SECRET="local-development-secret-change-me"
+$env:ACCESS_TOKEN_TTL="15m"
+$env:REFRESH_TOKEN_TTL="168h"
+$env:APP_ENV="development"
 go run ./cmd/server
 ```
 
-Backend URL: `http://localhost:8081`
+Backend URL: `http://localhost:8081`. Port `8080` is occupied by Oracle TNS
+Listener on this Windows development machine.
 
-Port `8080` is currently occupied by Oracle TNS Listener on this Windows
-development machine, so the local API uses port `8081`. The backend still
-accepts a configurable port through `PORT`.
+## Start the Frontend
+
+In another PowerShell window:
+
+```powershell
+cd apps\web
+npm run dev
+```
+
+Frontend URL: `http://localhost:3000`. The frontend uses
+`NEXT_PUBLIC_API_URL=http://localhost:8081` and does not store tokens in browser
+storage.
+
+## Authentication Testing
+
+Routes:
+
+```text
+POST http://localhost:8081/api/v1/auth/register
+POST http://localhost:8081/api/v1/auth/login
+POST http://localhost:8081/api/v1/auth/refresh
+POST http://localhost:8081/api/v1/auth/logout
+GET  http://localhost:8081/api/v1/auth/me
+```
+
+Refresh and logout requests must retain cookies. `/me` requires a Bearer access
+token. The refresh token is HttpOnly and is not sent in JSON.
 
 ## Health Check
-
-Request:
 
 ```text
 GET http://localhost:8081/health
 ```
 
-Response when PostgreSQL is available:
+Expected response while PostgreSQL is available:
 
 ```json
 {
@@ -119,7 +95,3 @@ Response when PostgreSQL is available:
   "database": "ok"
 }
 ```
-
-The Go API requires `DATABASE_URL` during startup and checks PostgreSQL
-connectivity for each health request. It will not start if PostgreSQL cannot
-be reached.

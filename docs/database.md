@@ -2,95 +2,57 @@
 
 ## Current Database
 
-FlowCart uses PostgreSQL `18.6` in Docker for local development.
-
-```text
-Windows host port: 5433
-Container port: 5432
-```
-
-The existing local PostgreSQL installation uses host port `5432`. Do not stop
-or modify it. The FlowCart connection URL is:
+FlowCart uses PostgreSQL `18.6` in Docker. The existing local PostgreSQL
+installation uses host port `5432`; FlowCart uses host port `5433` mapped to
+container port `5432`.
 
 ```text
 postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable
 ```
 
-## Migration System
+## Migrations
 
-Migrations use `github.com/golang-migrate/migrate/v4` with PostgreSQL support.
-The migration command is in `apps/api/cmd/migrate` and reads `DATABASE_URL`
-from the environment. Migrations are explicit; the HTTP server does not run
-them automatically.
+Versioned SQL migrations use `github.com/golang-migrate/migrate/v4`. They are
+explicit and are not run automatically by HTTP server startup.
 
-Migration files are versioned SQL files with this naming pattern:
+From `apps/api` in Windows PowerShell:
+
+```powershell
+$env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
+go run ./cmd/migrate up
+go run ./cmd/migrate down
+go run ./cmd/migrate up
+```
+
+Migration files use:
 
 ```text
 <version>_<description>.up.sql
 <version>_<description>.down.sql
 ```
 
-The current migration is:
+Current migrations:
 
 ```text
-apps/api/migrations/000001_core_saas_tables.up.sql
-apps/api/migrations/000001_core_saas_tables.down.sql
+migrations/000001_core_saas_tables.up.sql
+migrations/000001_core_saas_tables.down.sql
+migrations/000002_authentication.up.sql
+migrations/000002_authentication.down.sql
 ```
 
-## Windows PowerShell Workflow
+The migration tool creates `schema_migrations` to track versions. It is
+migration metadata, not an application domain table.
 
-Start PostgreSQL from the project root:
+## Application Tables
 
-```powershell
-docker compose up -d postgres
-docker compose ps
-```
-
-Then move into the Go API directory and set the database URL:
-
-```powershell
-cd apps\api
-$env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
-```
-
-Apply pending migrations:
-
-```powershell
-go run ./cmd/migrate up
-```
-
-Roll back the latest migration in a controlled local test:
-
-```powershell
-go run ./cmd/migrate down
-```
-
-Restore the schema after the rollback:
-
-```powershell
-go run ./cmd/migrate up
-```
-
-Inspect the PostgreSQL container logs when needed:
-
-```powershell
-docker compose logs postgres
-```
-
-The PostgreSQL Docker volume must not be deleted during this workflow.
-
-## Current Tables
-
-The migration creates these application domain tables:
+Current application tables are:
 
 - `users`
 - `organizations`
 - `organization_members`
+- `auth_sessions`
 
-The migration tool also creates `schema_migrations`. This is migration-tool
-metadata, not an application domain table.
-
-## Relationships
+Relationships:
 
 ```text
 users
@@ -98,40 +60,52 @@ users
 organization_members
    ↑
 organizations
+
+users
+   ↓
+auth_sessions
 ```
 
 `organization_members.organization_id` references `organizations.id` with
+`ON DELETE CASCADE`. `organization_members.user_id` references `users.id` with
+`ON DELETE CASCADE`. `auth_sessions.user_id` references `users.id` with
 `ON DELETE CASCADE`.
 
-`organization_members.user_id` references `users.id` with `ON DELETE CASCADE`.
+## Users
 
-## Constraints
+`users` contains `id`, `email`, optional `first_name` and `last_name`,
+`password_hash`, `created_at`, and `updated_at`. Passwords are stored as
+Argon2id encoded hashes, never plaintext. The authentication migration removes
+the original case-sensitive email unique index and adds one unique index on
+`LOWER(email)`, preventing `User@example.com` and `user@example.com` from
+becoming separate accounts. Email values are normalized in the service before
+storage.
 
-The `users` table has a unique constraint on `email`.
+## Organizations and Membership
 
-The `organizations` table has a unique constraint on `slug`.
+`organizations` contains `id`, `name`, `slug`, `created_at`, and `updated_at`.
+`slug` is unique.
 
-The `organization_members` table has a unique constraint on
-`(organization_id, user_id)` to prevent duplicate membership.
+`organization_members` contains `id`, `organization_id`, `user_id`, `role`, and
+`created_at`. `(organization_id, user_id)` is unique to prevent duplicate
+membership. Roles are limited to `owner`, `admin`, `warehouse_manager`,
+`support`, and `viewer`.
 
-Membership roles are restricted to:
+## Authentication Sessions
 
-- `owner`
-- `admin`
-- `warehouse_manager`
-- `support`
-- `viewer`
-
-The migration adds indexes for `organization_members.organization_id` and
-`organization_members.user_id`. PostgreSQL automatically creates indexes for
-the primary keys and unique constraints on `users.email`,
-`organizations.slug`, and `(organization_id, user_id)`.
+`auth_sessions` contains `id`, `user_id`, `refresh_token_hash`, `expires_at`,
+`created_at`, `last_used_at`, and `revoked_at`. `refresh_token_hash` is unique,
+and `user_id` has an index for session lookups. Plaintext refresh tokens are
+never stored. Organization IDs are intentionally not part of this table because
+authentication proves identity; authorization comes later.
 
 ## UUID Defaults
 
-The migration enables PostgreSQL's `pgcrypto` extension and uses
-`gen_random_uuid()` as the default for UUID primary keys. No IDs or seed data
-are inserted by the migration.
+The schema enables PostgreSQL's `pgcrypto` extension and uses
+`gen_random_uuid()` for UUID defaults. Migrations do not insert seed data.
 
-Passwords, authentication, JWT, registration, login, products, warehouses,
-inventory, orders, and other business tables are not implemented yet.
+## Not Implemented
+
+Email verification, password reset, MFA, OAuth/social login, organization
+authorization/RBAC, products, warehouses, inventory, orders, Redis, workers,
+payments, and other business tables are not implemented.

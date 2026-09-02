@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"flowcart/apps/api/internal/auth"
 	"flowcart/apps/api/internal/config"
 	"flowcart/apps/api/internal/database"
 	"flowcart/apps/api/internal/httpapi"
@@ -29,9 +30,11 @@ func main() {
 	}
 	defer pool.Close()
 
+	authRepository := auth.NewRepository(pool)
+	authService := auth.NewService(authRepository, cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: httpapi.NewRouter(pool),
+		Handler: httpapi.NewRouter(pool, authService, cfg.AppEnv),
 	}
 
 	serverErrors := make(chan error, 1)
