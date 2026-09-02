@@ -24,11 +24,7 @@ cd apps\web
 npm run dev
 ```
 
-Frontend URL:
-
-```text
-http://localhost:3000
-```
+Frontend URL: `http://localhost:3000`
 
 The frontend reads the backend URL from `NEXT_PUBLIC_API_URL`. Local
 development uses `http://localhost:8081`.
@@ -57,8 +53,37 @@ docker compose down
 ```
 
 The Compose service is named `postgres`, uses PostgreSQL `18.6`, and stores
-data in the named volume `flowcart_postgres_data`. No migrations or application
-tables are created by this milestone.
+data in the named volume `flowcart_postgres_data`.
+
+## Run Migrations
+
+Migrations are explicit and are not run automatically by the HTTP server. From
+`apps/api` in PowerShell:
+
+```powershell
+cd apps\api
+$env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
+go run ./cmd/migrate up
+```
+
+Roll back the latest migration with:
+
+```powershell
+go run ./cmd/migrate down
+```
+
+Restore the schema after a local rollback with:
+
+```powershell
+go run ./cmd/migrate up
+```
+
+The current migration files are:
+
+```text
+migrations/000001_core_saas_tables.up.sql
+migrations/000001_core_saas_tables.down.sql
+```
 
 ## Run the Backend
 
@@ -71,31 +96,27 @@ $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslm
 go run ./cmd/server
 ```
 
-Backend URL:
-
-```text
-http://localhost:8081
-```
+Backend URL: `http://localhost:8081`
 
 Port `8080` is currently occupied by Oracle TNS Listener on this Windows
 development machine, so the local API uses port `8081`. The backend still
-accepts a configurable port through the `PORT` environment variable.
+accepts a configurable port through `PORT`.
 
 ## Health Check
 
-With the backend running, open or request:
+Request:
 
 ```text
-http://localhost:8081/health
+GET http://localhost:8081/health
 ```
 
-The endpoint is `GET /health` and returns when PostgreSQL is available:
+Response when PostgreSQL is available:
 
 ```json
 {
-	"status": "ok",
-	"service": "flowcart-api",
-	"database": "ok"
+  "status": "ok",
+  "service": "flowcart-api",
+  "database": "ok"
 }
 ```
 
