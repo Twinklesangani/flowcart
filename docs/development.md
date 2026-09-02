@@ -42,12 +42,19 @@ Migrations are explicit and are not run by HTTP server startup.
 cd apps\api
 $env:PORT="8081"
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
-$env:JWT_SECRET="local-development-secret-change-me"
 $env:ACCESS_TOKEN_TTL="15m"
 $env:REFRESH_TOKEN_TTL="168h"
 $env:APP_ENV="development"
+$bytes = New-Object byte[] 64
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:JWT_SECRET = [Convert]::ToBase64String($bytes)
 go run ./cmd/server
 ```
+
+`JWT_SECRET` is required. Generate your own random value with the PowerShell
+commands above and never commit it. Production must use a secret manager or
+secure environment configuration. The root `.env.example` contains only a
+placeholder for `JWT_SECRET`; it must never contain a real secret.
 
 Backend URL: `http://localhost:8081`. Port `8080` is occupied by Oracle TNS
 Listener on this Windows development machine.

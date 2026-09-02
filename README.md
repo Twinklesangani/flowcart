@@ -100,12 +100,17 @@ From `apps/api`:
 ```powershell
 $env:PORT="8081"
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
-$env:JWT_SECRET="local-development-secret-change-me"
 $env:APP_ENV="development"
+$bytes = New-Object byte[] 64
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:JWT_SECRET = [Convert]::ToBase64String($bytes)
 go run ./cmd/server
 ```
 
 `ACCESS_TOKEN_TTL` defaults to `15m` and `REFRESH_TOKEN_TTL` defaults to `168h`.
+`JWT_SECRET` is required. Generate your own random value for each local
+environment and never commit it. Production deployments must provide the
+secret through a secret manager or other secure environment configuration.
 
 ## Run the Frontend
 

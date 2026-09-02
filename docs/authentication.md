@@ -83,14 +83,19 @@ credentials, and never uses wildcard origins with credentials.
 
 ```powershell
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
-$env:JWT_SECRET="local-development-secret-change-me"
 $env:ACCESS_TOKEN_TTL="15m"
 $env:REFRESH_TOKEN_TTL="168h"
 $env:APP_ENV="development"
+$bytes = New-Object byte[] 64
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$env:JWT_SECRET = [Convert]::ToBase64String($bytes)
 ```
 
-`JWT_SECRET` is required and must be replaced with a strong secret outside
-local development. No dotenv package is used.
+`JWT_SECRET` is required. Generate your own cryptographically random value for
+local development using the PowerShell commands above. Never commit the
+generated value. Production must use a secret manager or secure environment
+configuration. `.env.example` contains only a placeholder and never a real
+secret. No dotenv package is used.
 
 ## Frontend Session Flow
 
