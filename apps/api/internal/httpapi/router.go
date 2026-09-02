@@ -6,32 +6,47 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type healthResponse struct {
-	Status  string `json:"status"`
-	Service string `json:"service"`
+	Status   string `json:"status"`
+	Service  string `json:"service"`
+	Database string `json:"database"`
 }
 
-func NewRouter() http.Handler {
+func NewRouter(pool *pgxpool.Pool) http.Handler {
 	router := chi.NewRouter()
 	router.Use(middleware.RequestID)
 	router.Use(middleware.Logger)
 	router.Use(middleware.Recoverer)
 	router.Use(corsMiddleware)
 
-	router.Get("/health", healthHandler)
+	router.Get("/health", healthHandler(pool))
 
 	return router
 }
 
-func healthHandler(writer http.ResponseWriter, request *http.Request) {
-	writer.Header().Set("Content-Type", "application/json")
-	writer.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(writer).Encode(healthResponse{
-		Status:  "ok",
-		Service: "flowcart-api",
-	})
+func healthHandler(pool *pgxpool.Pool) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		writer.Header().Set("Content-Type", "application/json")
+		if err := pool.Ping(request.Context()); err != nil {
+			writer.WriteHeader(http.StatusServiceUnavailable)
+			_ = json.NewEncoder(writer).Encode(healthResponse{
+				Status:   "unhealthy",
+				Service:  "flowcart-api",
+				Database: "unavailable",
+			})
+			return
+		}
+
+		writer.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(writer).Encode(healthResponse{
+			Status:   "ok",
+			Service:  "flowcart-api",
+			Database: "ok",
+		})
+	}
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

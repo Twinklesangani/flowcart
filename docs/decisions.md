@@ -6,6 +6,8 @@
 - Use TypeScript for frontend application code.
 - Use Go for the backend.
 - Use Chi as the Go HTTP router.
+- Use PostgreSQL as the primary database.
+- Use `pgxpool` from pgx for Go database connection management.
 - Use a modular monolith architecture.
 - Use port `8081` for the local Go API because port `8080` conflicts with
 	Oracle TNS Listener on the development machine.
@@ -15,8 +17,8 @@
 
 ## Planned Decisions
 
-- PostgreSQL will be the primary database.
 - Future backend features will generally follow the
 	`handler -> service -> repository` architecture.
 
-These planned decisions are not implemented in the current foundation.
+PostgreSQL infrastructure is implemented, but migrations and application
+tables are not implemented in the current foundation.

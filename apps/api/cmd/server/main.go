@@ -11,14 +11,27 @@ import (
 	"time"
 
 	"flowcart/apps/api/internal/config"
+	"flowcart/apps/api/internal/database"
 	"flowcart/apps/api/internal/httpapi"
 )
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("load configuration: %v", err)
+	}
+
+	startupContext, cancelStartup := context.WithTimeout(context.Background(), 5*time.Second)
+	pool, err := database.NewPool(startupContext, cfg.DatabaseURL)
+	cancelStartup()
+	if err != nil {
+		log.Fatalf("connect to PostgreSQL: %v", err)
+	}
+	defer pool.Close()
+
 	server := &http.Server{
 		Addr:    ":" + cfg.Port,
-		Handler: httpapi.NewRouter(),
+		Handler: httpapi.NewRouter(pool),
 	}
 
 	serverErrors := make(chan error, 1)
