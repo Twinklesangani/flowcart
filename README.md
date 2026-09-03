@@ -23,12 +23,13 @@ Implemented:
 - Explicit versioned database migrations
 - Register, login, refresh, logout, and protected `/me` authentication routes
 - HttpOnly refresh-cookie sessions with rotation
+- Organization creation, tenant-scoped access, and role-based member management
 - Health endpoint that verifies database connectivity
 
-Authentication is identity-only. Organization authorization and RBAC are not
-implemented. Email verification, password reset, MFA, OAuth/social login,
-products, warehouses, inventory, orders, Redis, workers, and payments are not
-implemented yet.
+Authentication proves identity. Organization membership is the source of truth
+for tenant authorization and RBAC. Email verification, password reset, MFA,
+OAuth/social login, products, warehouses, inventory, orders, Redis, workers,
+payments, email invitations, and custom permissions are not implemented yet.
 
 ## Repository Structure
 
@@ -39,6 +40,7 @@ flowcart/
 │   │   ├── cmd/migrate/
 │   │   ├── cmd/server/
 │   │   ├── internal/auth/
+│   │   ├── internal/organization/
 │   │   └── migrations/
 │   └── web/src/app/
 ├── docs/
@@ -102,7 +104,10 @@ $env:PORT="8081"
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
 $env:APP_ENV="development"
 $bytes = New-Object byte[] 64
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$bytes = New-Object byte[] 64
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$rng.Dispose()
 $env:JWT_SECRET = [Convert]::ToBase64String($bytes)
 go run ./cmd/server
 ```
@@ -147,3 +152,17 @@ GET http://localhost:8081/health
 - `GET /api/v1/auth/me`
 
 See [docs/authentication.md](docs/authentication.md) for security details.
+
+## Organization Routes
+
+- `POST /api/v1/organizations`
+- `GET /api/v1/organizations`
+- `GET /api/v1/organizations/{organizationID}`
+- `PATCH /api/v1/organizations/{organizationID}`
+- `GET /api/v1/organizations/{organizationID}/members`
+- `POST /api/v1/organizations/{organizationID}/members`
+- `PATCH /api/v1/organizations/{organizationID}/members/{userID}`
+- `DELETE /api/v1/organizations/{organizationID}/members/{userID}`
+
+See [docs/organizations.md](docs/organizations.md) for tenant isolation and
+role capabilities.

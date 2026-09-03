@@ -34,3 +34,18 @@ handler -> service -> repository -> PostgreSQL
 Email verification, password reset, MFA, OAuth/social login, organization
 authorization/RBAC, products, warehouses, inventory, orders, Redis, workers,
 and payments remain future work.
+
+## Organization and RBAC Decisions
+
+- Treat organization membership as the tenant authorization source of truth.
+- Put the route organization ID, authenticated user ID, and verified role in
+  request context only after a database membership lookup.
+- Return `404 Organization not found` for non-member organization access to
+  avoid leaking whether an inaccessible tenant exists.
+- Allow all members to view organization details and member lists.
+- Allow only owners and admins to update organizations and manage members.
+- Allow only owners to assign the `owner` role; admins cannot modify owners.
+- Protect last-owner role changes and removals with a PostgreSQL transaction
+  and row locking.
+- Keep organization authorization separate from identity authentication and
+  do not put roles in the JWT.

@@ -87,7 +87,10 @@ $env:ACCESS_TOKEN_TTL="15m"
 $env:REFRESH_TOKEN_TTL="168h"
 $env:APP_ENV="development"
 $bytes = New-Object byte[] 64
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$bytes = New-Object byte[] 64
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$rng.Dispose()
 $env:JWT_SECRET = [Convert]::ToBase64String($bytes)
 ```
 

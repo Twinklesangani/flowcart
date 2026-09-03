@@ -22,8 +22,9 @@ The Go API creates a PostgreSQL pool at startup and refuses to start if the
 connection cannot be established. The health endpoint pings the database.
 
 Authentication is separated into handler, service, repository, password, token,
-and middleware responsibilities. Authentication proves identity; organization
-authorization and RBAC are future concerns.
+and middleware responsibilities. Organization functionality has its own
+handler, service, repository, tenant middleware, and authorization helpers.
+Authentication proves identity; organization membership proves tenant access.
 
 ## Authentication Flow
 
@@ -46,6 +47,18 @@ explicitly through `apps/api/cmd/migrate`. The current schema includes
 The authentication migration adds a case-insensitive unique index on
 `LOWER(users.email)`, `users.password_hash`, and refresh-session persistence.
 The `pgcrypto` extension provides `gen_random_uuid()` defaults.
+
+## Organization Authorization
+
+Organization routes use the authenticated user ID and route organization ID to
+look up membership in PostgreSQL. The verified organization ID, user ID, and
+role are stored in request context. Organization-specific repository queries
+are scoped by organization ID.
+
+Members can view their organization and member list. Owners and admins can
+update organizations and manage members. Only owners can assign or manage
+owners; admins cannot modify owners. Last-owner changes are protected with
+transactional row locking.
 
 ## Future Phases
 

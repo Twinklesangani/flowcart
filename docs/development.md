@@ -46,7 +46,10 @@ $env:ACCESS_TOKEN_TTL="15m"
 $env:REFRESH_TOKEN_TTL="168h"
 $env:APP_ENV="development"
 $bytes = New-Object byte[] 64
-[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+$bytes = New-Object byte[] 64
+$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+$rng.GetBytes($bytes)
+$rng.Dispose()
 $env:JWT_SECRET = [Convert]::ToBase64String($bytes)
 go run ./cmd/server
 ```
@@ -82,10 +85,24 @@ POST http://localhost:8081/api/v1/auth/login
 POST http://localhost:8081/api/v1/auth/refresh
 POST http://localhost:8081/api/v1/auth/logout
 GET  http://localhost:8081/api/v1/auth/me
+POST http://localhost:8081/api/v1/organizations
+GET  http://localhost:8081/api/v1/organizations
+GET  http://localhost:8081/api/v1/organizations/{organizationID}
+PATCH http://localhost:8081/api/v1/organizations/{organizationID}
+GET  http://localhost:8081/api/v1/organizations/{organizationID}/members
+POST http://localhost:8081/api/v1/organizations/{organizationID}/members
+PATCH http://localhost:8081/api/v1/organizations/{organizationID}/members/{userID}
+DELETE http://localhost:8081/api/v1/organizations/{organizationID}/members/{userID}
 ```
 
 Refresh and logout requests must retain cookies. `/me` requires a Bearer access
 token. The refresh token is HttpOnly and is not sent in JSON.
+
+Organization routes require the Bearer access token. Organization-specific
+routes also verify membership using the route organization ID. A non-member is
+returned `404 Organization not found` so inaccessible tenant existence is not
+leaked. Owner/admin mutations return `403` when the role is insufficient, and
+last-owner protection returns `409`.
 
 ## Health Check
 

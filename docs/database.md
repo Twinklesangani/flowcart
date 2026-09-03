@@ -109,3 +109,12 @@ The schema enables PostgreSQL's `pgcrypto` extension and uses
 Email verification, password reset, MFA, OAuth/social login, organization
 authorization/RBAC, products, warehouses, inventory, orders, Redis, workers,
 payments, and other business tables are not implemented.
+
+## Organization Authorization Data
+
+`organization_members` is the authorization source of truth. Organization
+endpoints scope queries by the route organization ID and verified membership.
+The application does not trust an organization ID from the frontend by itself.
+
+The membership roles are `owner`, `admin`, `warehouse_manager`, `support`, and
+`viewer`. There are no custom roles or permission tables.

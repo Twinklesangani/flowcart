@@ -5,8 +5,10 @@ import (
 	"net/http"
 
 	"flowcart/apps/api/internal/auth"
+	"flowcart/apps/api/internal/organization"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -32,6 +34,22 @@ func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) htt
 		router.Post("/logout", authHandler.Logout)
 		router.With(authService.Authenticate).Get("/me", authHandler.Me)
 	})
+	organizationRepository := organization.NewRepository(pool)
+	organizationService := organization.NewService(organizationRepository)
+	organizationHandler := organization.NewHandler(organizationService)
+	authenticated := router.With(authService.Authenticate)
+	authenticated.Post("/api/v1/organizations", organizationHandler.Create)
+	authenticated.Get("/api/v1/organizations", organizationHandler.List)
+	organizationMembership := organization.Membership(organizationService, func(request *http.Request) (uuid.UUID, error) {
+		return uuid.Parse(chi.URLParam(request, "organizationID"))
+	})
+	organizationRoutes := router.With(authService.Authenticate, organizationMembership)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}", organizationHandler.Get)
+	organizationRoutes.Patch("/api/v1/organizations/{organizationID}", organizationHandler.Update)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/members", organizationHandler.Members)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/members", organizationHandler.AddMember)
+	organizationRoutes.Patch("/api/v1/organizations/{organizationID}/members/{userID}", organizationHandler.ChangeRole)
+	organizationRoutes.Delete("/api/v1/organizations/{organizationID}/members/{userID}", organizationHandler.RemoveMember)
 
 	return router
 }
