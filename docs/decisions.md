@@ -23,6 +23,18 @@
 - Keep backend port configurable through `PORT`.
 - Use `NEXT_PUBLIC_API_URL` for the frontend backend URL.
 
+## Products and Warehouses
+
+- Keep products and warehouses as separate modular-monolith domains.
+- Scope every product and warehouse query by organization ID, even after
+  membership middleware has verified the tenant.
+- Normalize product SKUs and warehouse codes to uppercase before storage.
+- Keep SKU and warehouse-code uniqueness case-insensitive and tenant-scoped.
+- Use `is_active` instead of DELETE because future inventory, orders, transfers,
+  and reporting may reference these operational records.
+- Allow owners/admins to manage products; allow owners/admins/warehouse
+  managers to manage warehouse metadata. All members can read both resources.
+
 ## Planned Architecture
 
 Future backend features will generally follow:
@@ -31,9 +43,8 @@ Future backend features will generally follow:
 handler -> service -> repository -> PostgreSQL
 ```
 
-Email verification, password reset, MFA, OAuth/social login, organization
-authorization/RBAC, products, warehouses, inventory, orders, Redis, workers,
-and payments remain future work.
+Email verification, password reset, MFA, OAuth/social login, inventory, orders,
+Redis, workers, and payments remain future work.
 
 ## Organization and RBAC Decisions
 

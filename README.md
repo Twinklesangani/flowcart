@@ -24,11 +24,12 @@ Implemented:
 - Register, login, refresh, logout, and protected `/me` authentication routes
 - HttpOnly refresh-cookie sessions with rotation
 - Organization creation, tenant-scoped access, and role-based member management
+- Tenant-owned products and warehouses with role-based metadata management
 - Health endpoint that verifies database connectivity
 
 Authentication proves identity. Organization membership is the source of truth
 for tenant authorization and RBAC. Email verification, password reset, MFA,
-OAuth/social login, products, warehouses, inventory, orders, Redis, workers,
+OAuth/social login, inventory, orders, Redis, workers,
 payments, email invitations, and custom permissions are not implemented yet.
 
 ## Repository Structure
@@ -41,6 +42,8 @@ flowcart/
 │   │   ├── cmd/server/
 │   │   ├── internal/auth/
 │   │   ├── internal/organization/
+│   │   ├── internal/product/
+│   │   ├── internal/warehouse/
 │   │   └── migrations/
 │   └── web/src/app/
 ├── docs/
@@ -48,7 +51,9 @@ flowcart/
 │   ├── authentication.md
 │   ├── database.md
 │   ├── decisions.md
-│   └── development.md
+│   ├── development.md
+│   ├── products.md
+│   └── warehouses.md
 └── AGENTS.md
 ```
 
@@ -166,3 +171,14 @@ See [docs/authentication.md](docs/authentication.md) for security details.
 
 See [docs/organizations.md](docs/organizations.md) for tenant isolation and
 role capabilities.
+
+## Product and Warehouse Routes
+
+- `POST|GET /api/v1/organizations/{organizationID}/products`
+- `GET|PATCH /api/v1/organizations/{organizationID}/products/{productID}`
+- `POST|GET /api/v1/organizations/{organizationID}/warehouses`
+- `GET|PATCH /api/v1/organizations/{organizationID}/warehouses/{warehouseID}`
+
+See [docs/products.md](docs/products.md) and
+[docs/warehouses.md](docs/warehouses.md). Inventory quantities are not yet
+implemented.

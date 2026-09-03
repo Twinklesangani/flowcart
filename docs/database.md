@@ -38,6 +38,8 @@ migrations/000001_core_saas_tables.up.sql
 migrations/000001_core_saas_tables.down.sql
 migrations/000002_authentication.up.sql
 migrations/000002_authentication.down.sql
+migrations/000003_products_and_warehouses.up.sql
+migrations/000003_products_and_warehouses.down.sql
 ```
 
 The migration tool creates `schema_migrations` to track versions. It is
@@ -51,6 +53,8 @@ Current application tables are:
 - `organizations`
 - `organization_members`
 - `auth_sessions`
+- `products`
+- `warehouses`
 
 Relationships:
 
@@ -70,6 +74,12 @@ auth_sessions
 `ON DELETE CASCADE`. `organization_members.user_id` references `users.id` with
 `ON DELETE CASCADE`. `auth_sessions.user_id` references `users.id` with
 `ON DELETE CASCADE`.
+
+`products.organization_id` and `warehouses.organization_id` reference
+`organizations.id` with `ON DELETE CASCADE`. Product SKUs and warehouse codes
+use case-insensitive unique expression indexes scoped to organization ID.
+Repositories include organization ID in every resource query for defense in
+depth.
 
 ## Users
 
@@ -106,9 +116,8 @@ The schema enables PostgreSQL's `pgcrypto` extension and uses
 
 ## Not Implemented
 
-Email verification, password reset, MFA, OAuth/social login, organization
-authorization/RBAC, products, warehouses, inventory, orders, Redis, workers,
-payments, and other business tables are not implemented.
+Email verification, password reset, MFA, OAuth/social login, inventory, orders,
+Redis, workers, payments, and other future business tables are not implemented.
 
 ## Organization Authorization Data
 

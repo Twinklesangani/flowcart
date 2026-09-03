@@ -6,6 +6,8 @@ import (
 
 	"flowcart/apps/api/internal/auth"
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/product"
+	"flowcart/apps/api/internal/warehouse"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
@@ -37,6 +39,8 @@ func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) htt
 	organizationRepository := organization.NewRepository(pool)
 	organizationService := organization.NewService(organizationRepository)
 	organizationHandler := organization.NewHandler(organizationService)
+	productHandler := product.NewHandler(product.NewService(product.NewRepository(pool)))
+	warehouseHandler := warehouse.NewHandler(warehouse.NewService(warehouse.NewRepository(pool)))
 	authenticated := router.With(authService.Authenticate)
 	authenticated.Post("/api/v1/organizations", organizationHandler.Create)
 	authenticated.Get("/api/v1/organizations", organizationHandler.List)
@@ -50,6 +54,14 @@ func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) htt
 	organizationRoutes.Post("/api/v1/organizations/{organizationID}/members", organizationHandler.AddMember)
 	organizationRoutes.Patch("/api/v1/organizations/{organizationID}/members/{userID}", organizationHandler.ChangeRole)
 	organizationRoutes.Delete("/api/v1/organizations/{organizationID}/members/{userID}", organizationHandler.RemoveMember)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/products", productHandler.Create)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/products", productHandler.List)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/products/{productID}", productHandler.Get)
+	organizationRoutes.Patch("/api/v1/organizations/{organizationID}/products/{productID}", productHandler.Update)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/warehouses", warehouseHandler.Create)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/warehouses", warehouseHandler.List)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/warehouses/{warehouseID}", warehouseHandler.Get)
+	organizationRoutes.Patch("/api/v1/organizations/{organizationID}/warehouses/{warehouseID}", warehouseHandler.Update)
 
 	return router
 }

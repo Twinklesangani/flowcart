@@ -93,6 +93,14 @@ GET  http://localhost:8081/api/v1/organizations/{organizationID}/members
 POST http://localhost:8081/api/v1/organizations/{organizationID}/members
 PATCH http://localhost:8081/api/v1/organizations/{organizationID}/members/{userID}
 DELETE http://localhost:8081/api/v1/organizations/{organizationID}/members/{userID}
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/products
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/products
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/products/{productID}
+PATCH  http://localhost:8081/api/v1/organizations/{organizationID}/products/{productID}
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/warehouses
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/warehouses
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/warehouses/{warehouseID}
+PATCH  http://localhost:8081/api/v1/organizations/{organizationID}/warehouses/{warehouseID}
 ```
 
 Refresh and logout requests must retain cookies. `/me` requires a Bearer access
