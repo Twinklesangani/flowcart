@@ -43,7 +43,7 @@ Future backend features will generally follow:
 handler -> service -> repository -> PostgreSQL
 ```
 
-Email verification, password reset, MFA, OAuth/social login, inventory, orders,
+Email verification, password reset, MFA, OAuth/social login, reservations, orders,
 Redis, workers, and payments remain future work.
 
 ## Organization and RBAC Decisions
@@ -60,3 +60,16 @@ Redis, workers, and payments remain future work.
   and row locking.
 - Keep organization authorization separate from identity authentication and
   do not put roles in the JWT.
+
+## Inventory and Stock Safety
+
+- Model physical stock as one inventory level per organization, product, and
+  warehouse.
+- Keep inventory tenant scoped and validate both related resources in the
+  same organization before creation.
+- Keep nonnegative stock as both a service rule and a PostgreSQL `CHECK`
+  constraint.
+- Change stock through a signed delta operation, not an arbitrary quantity
+  patch. The repository locks the row with `SELECT ... FOR UPDATE` inside a
+  short transaction before validating and updating the quantity.
+- Keep reservations, orders, transfers, and allocation out of this milestone.

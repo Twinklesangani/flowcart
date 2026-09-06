@@ -40,6 +40,8 @@ migrations/000002_authentication.up.sql
 migrations/000002_authentication.down.sql
 migrations/000003_products_and_warehouses.up.sql
 migrations/000003_products_and_warehouses.down.sql
+migrations/000004_inventory_levels.up.sql
+migrations/000004_inventory_levels.down.sql
 ```
 
 The migration tool creates `schema_migrations` to track versions. It is
@@ -55,6 +57,7 @@ Current application tables are:
 - `auth_sessions`
 - `products`
 - `warehouses`
+- `inventory_levels`
 
 Relationships:
 
@@ -79,7 +82,9 @@ auth_sessions
 `organizations.id` with `ON DELETE CASCADE`. Product SKUs and warehouse codes
 use case-insensitive unique expression indexes scoped to organization ID.
 Repositories include organization ID in every resource query for defense in
-depth.
+depth. `inventory_levels` references products and warehouses with restrictive
+deletes, has one unique row per organization/product/warehouse pair, and
+enforces `on_hand_quantity >= 0` with a database check constraint.
 
 ## Users
 
@@ -116,7 +121,7 @@ The schema enables PostgreSQL's `pgcrypto` extension and uses
 
 ## Not Implemented
 
-Email verification, password reset, MFA, OAuth/social login, inventory, orders,
+Email verification, password reset, MFA, reservations, orders,
 Redis, workers, payments, and other future business tables are not implemented.
 
 ## Organization Authorization Data

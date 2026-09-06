@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"flowcart/apps/api/internal/auth"
+	"flowcart/apps/api/internal/inventory"
 	"flowcart/apps/api/internal/organization"
 	"flowcart/apps/api/internal/product"
 	"flowcart/apps/api/internal/warehouse"
@@ -41,6 +42,7 @@ func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) htt
 	organizationHandler := organization.NewHandler(organizationService)
 	productHandler := product.NewHandler(product.NewService(product.NewRepository(pool)))
 	warehouseHandler := warehouse.NewHandler(warehouse.NewService(warehouse.NewRepository(pool)))
+	inventoryHandler := inventory.NewHandler(inventory.NewService(inventory.NewRepository(pool)))
 	authenticated := router.With(authService.Authenticate)
 	authenticated.Post("/api/v1/organizations", organizationHandler.Create)
 	authenticated.Get("/api/v1/organizations", organizationHandler.List)
@@ -62,6 +64,10 @@ func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) htt
 	organizationRoutes.Get("/api/v1/organizations/{organizationID}/warehouses", warehouseHandler.List)
 	organizationRoutes.Get("/api/v1/organizations/{organizationID}/warehouses/{warehouseID}", warehouseHandler.Get)
 	organizationRoutes.Patch("/api/v1/organizations/{organizationID}/warehouses/{warehouseID}", warehouseHandler.Update)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/inventory", inventoryHandler.Create)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/inventory", inventoryHandler.List)
+	organizationRoutes.Get("/api/v1/organizations/{organizationID}/inventory/{inventoryID}", inventoryHandler.Get)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust", inventoryHandler.Adjust)
 
 	return router
 }

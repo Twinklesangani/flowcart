@@ -29,7 +29,7 @@ Implemented:
 
 Authentication proves identity. Organization membership is the source of truth
 for tenant authorization and RBAC. Email verification, password reset, MFA,
-OAuth/social login, inventory, orders, Redis, workers,
+OAuth/social login, reservations, orders, Redis, workers,
 payments, email invitations, and custom permissions are not implemented yet.
 
 ## Repository Structure
@@ -44,6 +44,7 @@ flowcart/
 │   │   ├── internal/organization/
 │   │   ├── internal/product/
 │   │   ├── internal/warehouse/
+│   │   ├── internal/inventory/
 │   │   └── migrations/
 │   └── web/src/app/
 ├── docs/
@@ -179,6 +180,12 @@ role capabilities.
 - `POST|GET /api/v1/organizations/{organizationID}/warehouses`
 - `GET|PATCH /api/v1/organizations/{organizationID}/warehouses/{warehouseID}`
 
+## Inventory Routes
+
+- `POST|GET /api/v1/organizations/{organizationID}/inventory`
+- `GET /api/v1/organizations/{organizationID}/inventory/{inventoryID}`
+- `POST /api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust`
+
 See [docs/products.md](docs/products.md) and
-[docs/warehouses.md](docs/warehouses.md). Inventory quantities are not yet
-implemented.
+[docs/warehouses.md](docs/warehouses.md). See [docs/inventory.md](docs/inventory.md)
+for tenant scoping, RBAC, and concurrency-safe stock adjustments.

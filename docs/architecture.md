@@ -25,7 +25,8 @@ Authentication is separated into handler, service, repository, password, token,
 and middleware responsibilities. Organization functionality has its own
 handler, service, repository, tenant middleware, and authorization helpers.
 Products and warehouses are separate tenant-owned modules following the same
-handler -> service -> repository -> PostgreSQL flow.
+handler -> service -> repository -> PostgreSQL flow. Inventory follows the same
+flow and uses a repository transaction for stock adjustments.
 Authentication proves identity; organization membership proves tenant access.
 
 ## Authentication Flow
@@ -44,7 +45,7 @@ existing local PostgreSQL installation on port `5432` is not modified.
 Versioned SQL migrations use `github.com/golang-migrate/migrate/v4` and are run
 explicitly through `apps/api/cmd/migrate`. The current schema includes
 `users`, `organizations`, `organization_members`, `auth_sessions`, `products`,
-and `warehouses`.
+`warehouses`, and `inventory_levels`.
 `schema_migrations` is migration-tool metadata, not a domain table.
 
 The authentication migration adds a case-insensitive unique index on
@@ -65,5 +66,5 @@ transactional row locking.
 
 ## Future Phases
 
-Email verification, password reset, MFA, OAuth/social login, inventory, orders,
+Email verification, password reset, MFA, reservations, orders,
 Redis, workers, payments, and AWS infrastructure are not implemented.

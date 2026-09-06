@@ -101,6 +101,10 @@ POST   http://localhost:8081/api/v1/organizations/{organizationID}/warehouses
 GET    http://localhost:8081/api/v1/organizations/{organizationID}/warehouses
 GET    http://localhost:8081/api/v1/organizations/{organizationID}/warehouses/{warehouseID}
 PATCH  http://localhost:8081/api/v1/organizations/{organizationID}/warehouses/{warehouseID}
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/inventory
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust
 ```
 
 Refresh and logout requests must retain cookies. `/me` requires a Bearer access
@@ -111,6 +115,12 @@ routes also verify membership using the route organization ID. A non-member is
 returned `404 Organization not found` so inaccessible tenant existence is not
 leaked. Owner/admin mutations return `403` when the role is insufficient, and
 last-owner protection returns `409`.
+
+Inventory creation requires an active product and warehouse and is limited to
+owners, admins, and warehouse managers. All members can read inventory. Stock
+changes use the adjust operation with a signed `delta`; support and viewer
+roles receive `403`, and an adjustment that would make stock negative returns
+`409`.
 
 ## Health Check
 

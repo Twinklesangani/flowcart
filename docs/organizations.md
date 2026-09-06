@@ -90,6 +90,6 @@ Token hashes.
 
 ## Not Implemented
 
-Products, warehouses, inventory, orders, organization email invitations,
+Orders, organization email invitations,
 billing, subscriptions, custom permissions, audit logs, and other business
 features are not implemented.
