@@ -105,6 +105,8 @@ POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory
 GET    http://localhost:8081/api/v1/organizations/{organizationID}/inventory
 GET    http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}
 POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}/reservations
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/reservations/{reservationID}/release
 ```
 
 Refresh and logout requests must retain cookies. `/me` requires a Bearer access
@@ -121,6 +123,11 @@ owners, admins, and warehouse managers. All members can read inventory. Stock
 changes use the adjust operation with a signed `delta`; support and viewer
 roles receive `403`, and an adjustment that would make stock negative returns
 `409`.
+
+Reservation writes are limited to owners, admins, and warehouse managers.
+Reservations receive a server-controlled 15-minute TTL. Availability excludes
+reservations whose status is not `active` or whose expiration is not in the
+future.
 
 ## Health Check
 

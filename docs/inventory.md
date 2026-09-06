@@ -52,5 +52,6 @@ Owners, admins, and warehouse managers can create levels and adjust stock.
 Owners, admins, warehouse managers, support, and viewers can list and read
 inventory. Support and viewer writes return `403`.
 
-Reservations, reserved quantity, available-to-promise, orders, allocation,
-transfers, alerts, and audit events are intentionally not implemented yet.
+Orders, available-to-promise, allocation, transfers, alerts, and audit events
+are intentionally not implemented yet. See [reservations.md](reservations.md)
+for reservation-specific availability and lifecycle rules.

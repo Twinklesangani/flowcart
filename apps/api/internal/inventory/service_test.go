@@ -10,9 +10,11 @@ import (
 )
 
 type fakeRepository struct {
-	createErr error
-	adjustErr error
-	lastOrgID uuid.UUID
+	createErr  error
+	adjustErr  error
+	reserveErr error
+	releaseErr error
+	lastOrgID  uuid.UUID
 }
 
 func (r *fakeRepository) Create(_ context.Context, organizationID uuid.UUID, input CreateInput) (InventoryLevel, error) {
@@ -33,6 +35,20 @@ func (r *fakeRepository) Get(_ context.Context, organizationID, id uuid.UUID) (I
 func (r *fakeRepository) Adjust(_ context.Context, organizationID, _ uuid.UUID, _ int64) (InventoryLevel, error) {
 	r.lastOrgID = organizationID
 	return InventoryLevel{}, r.adjustErr
+}
+func (r *fakeRepository) Reserve(_ context.Context, organizationID, inventoryID uuid.UUID, quantity int64) (Reservation, error) {
+	r.lastOrgID = organizationID
+	if r.reserveErr != nil {
+		return Reservation{}, r.reserveErr
+	}
+	return Reservation{ID: uuid.New(), OrganizationID: organizationID, InventoryLevelID: inventoryID, Quantity: quantity, Status: "active"}, nil
+}
+func (r *fakeRepository) Release(_ context.Context, organizationID, reservationID uuid.UUID) (Reservation, error) {
+	r.lastOrgID = organizationID
+	if r.releaseErr != nil {
+		return Reservation{}, r.releaseErr
+	}
+	return Reservation{ID: reservationID, OrganizationID: organizationID, Status: "released"}, nil
 }
 
 func inventoryTenant(role organization.Role) organization.TenantContext {
@@ -96,5 +112,56 @@ func TestInventoryAdjustPermissionsAndErrors(t *testing.T) {
 	}
 	if _, err := service.Adjust(context.Background(), inventoryTenant(organization.RoleOwner), uuid.New(), -1); !errors.Is(err, ErrInsufficientStock) {
 		t.Fatalf("adjust error = %v", err)
+	}
+}
+
+func TestInventoryReservationRBACAndValidation(t *testing.T) {
+	service := NewService(&fakeRepository{})
+	for _, role := range []organization.Role{organization.RoleOwner, organization.RoleAdmin, organization.RoleWarehouseManager} {
+		if _, err := service.Reserve(context.Background(), inventoryTenant(role), uuid.New(), 1); err != nil {
+			t.Fatalf("%s reserve error = %v", role, err)
+		}
+	}
+	for _, role := range []organization.Role{organization.RoleSupport, organization.RoleViewer} {
+		if _, err := service.Reserve(context.Background(), inventoryTenant(role), uuid.New(), 1); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("%s reserve error = %v", role, err)
+		}
+	}
+	owner := inventoryTenant(organization.RoleOwner)
+	if _, err := service.Reserve(context.Background(), owner, uuid.New(), 0); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("zero reserve error = %v", err)
+	}
+	if _, err := service.Reserve(context.Background(), owner, uuid.New(), -1); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("negative reserve error = %v", err)
+	}
+}
+
+func TestInventoryReleaseRBACAndValidation(t *testing.T) {
+	service := NewService(&fakeRepository{})
+	for _, role := range []organization.Role{organization.RoleOwner, organization.RoleAdmin, organization.RoleWarehouseManager} {
+		if _, err := service.Release(context.Background(), inventoryTenant(role), uuid.New()); err != nil {
+			t.Fatalf("%s release error = %v", role, err)
+		}
+	}
+	for _, role := range []organization.Role{organization.RoleSupport, organization.RoleViewer} {
+		if _, err := service.Release(context.Background(), inventoryTenant(role), uuid.New()); !errors.Is(err, ErrForbidden) {
+			t.Fatalf("%s release error = %v", role, err)
+		}
+	}
+	if _, err := service.Release(context.Background(), inventoryTenant(organization.RoleOwner), uuid.Nil); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("nil release error = %v", err)
+	}
+}
+
+func TestInventoryReservationRepositoryErrorsPreserved(t *testing.T) {
+	reserveErr := errors.New("reservation database unavailable")
+	releaseErr := errors.New("release database unavailable")
+	service := NewService(&fakeRepository{reserveErr: reserveErr, releaseErr: releaseErr})
+	tenant := inventoryTenant(organization.RoleOwner)
+	if _, err := service.Reserve(context.Background(), tenant, uuid.New(), 1); !errors.Is(err, reserveErr) {
+		t.Fatalf("reserve repository error = %v", err)
+	}
+	if _, err := service.Release(context.Background(), tenant, uuid.New()); !errors.Is(err, releaseErr) {
+		t.Fatalf("release repository error = %v", err)
 	}
 }

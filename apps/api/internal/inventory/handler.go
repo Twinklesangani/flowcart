@@ -14,6 +14,9 @@ type Handler struct{ service *Service }
 type adjustInput struct {
 	Delta int64 `json:"delta"`
 }
+type reserveInput struct {
+	Quantity int64 `json:"quantity"`
+}
 
 func NewHandler(service *Service) *Handler { return &Handler{service: service} }
 func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +85,44 @@ func (h *Handler) Adjust(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, item)
 }
+func (h *Handler) Reserve(w http.ResponseWriter, r *http.Request) {
+	tenant, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	inventoryID, err := uuid.Parse(chi.URLParam(r, "inventoryID"))
+	if err != nil {
+		writeErrorFromDomain(w, ErrNotFound)
+		return
+	}
+	var input reserveInput
+	if !decode(w, r, &input) {
+		return
+	}
+	reservation, err := h.service.Reserve(r.Context(), tenant, inventoryID, input.Quantity)
+	if err != nil {
+		writeErrorFromDomain(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, reservation)
+}
+func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
+	tenant, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	reservationID, err := uuid.Parse(chi.URLParam(r, "reservationID"))
+	if err != nil {
+		writeErrorFromDomain(w, ErrReservationNotFound)
+		return
+	}
+	reservation, err := h.service.Release(r.Context(), tenant, reservationID)
+	if err != nil {
+		writeErrorFromDomain(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, reservation)
+}
 func tenantFromRequest(w http.ResponseWriter, r *http.Request) (organization.TenantContext, bool) {
 	tenant, ok := organization.TenantFromContext(r.Context())
 	if !ok {
@@ -120,6 +161,12 @@ func writeErrorFromDomain(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "inactive_warehouse", "The warehouse is inactive.")
 	case errors.Is(err, ErrInsufficientStock):
 		writeError(w, http.StatusConflict, "insufficient_stock", "The adjustment would make stock negative.")
+	case errors.Is(err, ErrStockBelowReserved):
+		writeError(w, http.StatusConflict, "stock_below_reserved", "Stock cannot fall below the reserved quantity.")
+	case errors.Is(err, ErrInsufficientAvailableStock):
+		writeError(w, http.StatusConflict, "insufficient_available_stock", "There is not enough available stock for this reservation.")
+	case errors.Is(err, ErrReservationNotFound):
+		writeError(w, http.StatusNotFound, "reservation_not_found", "Reservation not found.")
 	default:
 		writeError(w, http.StatusInternalServerError, "internal_error", "An unexpected error occurred.")
 	}

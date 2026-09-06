@@ -73,3 +73,15 @@ Redis, workers, and payments remain future work.
   patch. The repository locks the row with `SELECT ... FOR UPDATE` inside a
   short transaction before validating and updating the quantity.
 - Keep reservations, orders, transfers, and allocation out of this milestone.
+
+## Reservations and Availability
+
+- Store reservations as individually identifiable rows rather than adding a
+  denormalized counter to `inventory_levels`.
+- Calculate effective reserved stock from `status = 'active'` and
+  `expires_at > NOW()`.
+- Use a server-controlled 15-minute TTL until configuration is needed.
+- Serialize reserve, release, expiry, and stock adjustment through the same
+  tenant-scoped inventory row lock.
+- Keep reserve retries without an idempotency key as a known limitation until
+  order and payment workflows define durable request identity.

@@ -42,6 +42,8 @@ migrations/000003_products_and_warehouses.up.sql
 migrations/000003_products_and_warehouses.down.sql
 migrations/000004_inventory_levels.up.sql
 migrations/000004_inventory_levels.down.sql
+migrations/000005_inventory_reservations.up.sql
+migrations/000005_inventory_reservations.down.sql
 ```
 
 The migration tool creates `schema_migrations` to track versions. It is
@@ -58,6 +60,7 @@ Current application tables are:
 - `products`
 - `warehouses`
 - `inventory_levels`
+- `inventory_reservations`
 
 Relationships:
 
@@ -85,6 +88,10 @@ Repositories include organization ID in every resource query for defense in
 depth. `inventory_levels` references products and warehouses with restrictive
 deletes, has one unique row per organization/product/warehouse pair, and
 enforces `on_hand_quantity >= 0` with a database check constraint.
+`inventory_reservations` stores individually identifiable active, released, or
+expired reservations. Its composite tenant foreign key references
+`inventory_levels(organization_id, id)`, and positive quantities plus valid
+statuses are enforced by database checks.
 
 ## Users
 
@@ -121,7 +128,7 @@ The schema enables PostgreSQL's `pgcrypto` extension and uses
 
 ## Not Implemented
 
-Email verification, password reset, MFA, reservations, orders,
+Email verification, password reset, MFA, orders,
 Redis, workers, payments, and other future business tables are not implemented.
 
 ## Organization Authorization Data

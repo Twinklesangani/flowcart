@@ -25,11 +25,12 @@ Implemented:
 - HttpOnly refresh-cookie sessions with rotation
 - Organization creation, tenant-scoped access, and role-based member management
 - Tenant-owned products and warehouses with role-based metadata management
+- Tenant-scoped inventory with concurrency-safe stock adjustments and reservations
 - Health endpoint that verifies database connectivity
 
 Authentication proves identity. Organization membership is the source of truth
 for tenant authorization and RBAC. Email verification, password reset, MFA,
-OAuth/social login, reservations, orders, Redis, workers,
+OAuth/social login, orders, Redis, workers,
 payments, email invitations, and custom permissions are not implemented yet.
 
 ## Repository Structure
@@ -185,7 +186,10 @@ role capabilities.
 - `POST|GET /api/v1/organizations/{organizationID}/inventory`
 - `GET /api/v1/organizations/{organizationID}/inventory/{inventoryID}`
 - `POST /api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust`
+- `POST /api/v1/organizations/{organizationID}/inventory/{inventoryID}/reservations`
+- `POST /api/v1/organizations/{organizationID}/reservations/{reservationID}/release`
 
 See [docs/products.md](docs/products.md) and
 [docs/warehouses.md](docs/warehouses.md). See [docs/inventory.md](docs/inventory.md)
-for tenant scoping, RBAC, and concurrency-safe stock adjustments.
+for tenant scoping, RBAC, stock adjustments, and availability. See
+[docs/reservations.md](docs/reservations.md) for reservation lifecycle details.

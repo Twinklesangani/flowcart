@@ -26,7 +26,8 @@ and middleware responsibilities. Organization functionality has its own
 handler, service, repository, tenant middleware, and authorization helpers.
 Products and warehouses are separate tenant-owned modules following the same
 handler -> service -> repository -> PostgreSQL flow. Inventory follows the same
-flow and uses a repository transaction for stock adjustments.
+flow and uses a shared inventory-row transaction for stock adjustments and
+reservations.
 Authentication proves identity; organization membership proves tenant access.
 
 ## Authentication Flow
@@ -66,5 +67,5 @@ transactional row locking.
 
 ## Future Phases
 
-Email verification, password reset, MFA, reservations, orders,
+Email verification, password reset, MFA, orders,
 Redis, workers, payments, and AWS infrastructure are not implemented.

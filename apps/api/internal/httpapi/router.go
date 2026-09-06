@@ -68,6 +68,8 @@ func NewRouter(pool *pgxpool.Pool, authService *auth.Service, appEnv string) htt
 	organizationRoutes.Get("/api/v1/organizations/{organizationID}/inventory", inventoryHandler.List)
 	organizationRoutes.Get("/api/v1/organizations/{organizationID}/inventory/{inventoryID}", inventoryHandler.Get)
 	organizationRoutes.Post("/api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust", inventoryHandler.Adjust)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/inventory/{inventoryID}/reservations", inventoryHandler.Reserve)
+	organizationRoutes.Post("/api/v1/organizations/{organizationID}/reservations/{reservationID}/release", inventoryHandler.Release)
 
 	return router
 }
