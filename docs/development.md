@@ -1,10 +1,17 @@
+# Automatic orders
+
+Use `POST /api/v1/organizations/{organizationID}/orders/auto-allocate` with an
+`Idempotency-Key` and product quantities. The existing order endpoint remains
+the manual explicit-inventory path. Run the API tests with PostgreSQL available
+on the configured `DATABASE_URL` to exercise locking and reservation behavior.
+
 # FlowCart OS Development
 
-## Project Root
+## Transfer Verification
 
-```text
-C:\Users\TWINKLE SANGANI\OneDrive\Desktop\flowcart
-```
+Transfer changes require PostgreSQL integration coverage for conservation, idempotency, destination-level concurrency, opposite-direction locking, and races with allocation, reservation, fulfillment, and adjustment. Run the API tests with `DATABASE_URL` pointing at the project PostgreSQL instance before treating a transfer change as complete.
+
+## Project Root
 
 Prerequisites are Node.js/npm, Go, Windows PowerShell, and Docker Desktop with
 the Linux engine running. The existing local PostgreSQL uses port `5432`; do
@@ -23,18 +30,23 @@ docker compose logs postgres
 
 Stop it with `docker compose down`. Do not delete the Docker volume.
 
+The intended local environment is Docker PostgreSQL on host port `5433`, mapped
+to container port `5432`. Docker recovery and clean-environment proof belong to
+M19A-2; a temporary host PostgreSQL instance is not the preferred setup.
+
 ## Migrations
 
 From `apps/api`:
 
 ```powershell
-$env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
-go run ./cmd/migrate up
-go run ./cmd/migrate down
+$env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart_verification_20260922_01?sslmode=disable"
 go run ./cmd/migrate up
 ```
 
 Migrations are explicit and are not run by HTTP server startup.
+Do not run `migrate down`, seed, restore, or destructive SQL against the
+original `flowcart` database. Use a newly named disposable database for
+rollback and restore proof; see [backup-restore.md](backup-restore.md).
 
 ## Start the Backend
 
@@ -45,7 +57,6 @@ $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslm
 $env:ACCESS_TOKEN_TTL="15m"
 $env:REFRESH_TOKEN_TTL="168h"
 $env:APP_ENV="development"
-$bytes = New-Object byte[] 64
 $bytes = New-Object byte[] 64
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes)
@@ -74,6 +85,19 @@ npm run dev
 Frontend URL: `http://localhost:3000`. The frontend uses
 `NEXT_PUBLIC_API_URL=http://localhost:8081` and does not store tokens in browser
 storage.
+
+Frontend checks:
+
+```powershell
+cd apps\web
+node --test tests/*.test.mjs
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+The Playwright suite requires `API_URL`, `WEB_URL`, a disposable seeded
+database, and Chromium. It is not intended to run against `flowcart`.
 
 ## Authentication Testing
 
@@ -107,6 +131,17 @@ GET    http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{in
 POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust
 POST   http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}/reservations
 POST   http://localhost:8081/api/v1/organizations/{organizationID}/reservations/{reservationID}/release
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/orders
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/orders
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/orders/{orderID}
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/orders/{orderID}/cancel
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/orders/{orderID}/fulfillments
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/orders/{orderID}/fulfillments
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/fulfillments/{fulfillmentID}
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/inventory/{inventoryID}/movements
+POST   http://localhost:8081/api/v1/organizations/{organizationID}/orders/{orderID}/payments
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/orders/{orderID}/payments
+GET    http://localhost:8081/api/v1/organizations/{organizationID}/payments/{paymentID}
 ```
 
 Refresh and logout requests must retain cookies. `/me` requires a Bearer access
@@ -128,6 +163,14 @@ Reservation writes are limited to owners, admins, and warehouse managers.
 Reservations receive a server-controlled 15-minute TTL. Availability excludes
 reservations whose status is not `active` or whose expiration is not in the
 future.
+
+Order creation requires an `Idempotency-Key` header. It atomically creates the
+order, item snapshots, and linked reservations. Owners, admins, and warehouse
+managers can create and cancel orders; all members can read them.
+
+Payment creation requires an `Idempotency-Key` and creates only pending payment
+attempts. Owners, admins, and warehouse managers can create payments; all
+members can read them. Provider status transitions and webhooks are deferred.
 
 ## Health Check
 

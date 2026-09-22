@@ -17,8 +17,8 @@
   Domain. Disable Secure for local HTTP and enable it in production.
 - Keep frontend access tokens in runtime memory, never localStorage or
   sessionStorage.
-- Keep authentication identity separate from future organization authorization
-  and RBAC.
+- Keep authentication identity separate from organization authorization and
+  RBAC; membership middleware supplies the verified tenant context.
 - Use local API port `8081` because Oracle TNS Listener occupies `8080`.
 - Keep backend port configurable through `PORT`.
 - Use `NEXT_PUBLIC_API_URL` for the frontend backend URL.
@@ -43,8 +43,9 @@ Future backend features will generally follow:
 handler -> service -> repository -> PostgreSQL
 ```
 
-Email verification, password reset, MFA, OAuth/social login, reservations, orders,
-Redis, workers, and payments remain future work.
+Email verification, password reset, MFA, OAuth/social login, Redis, workers,
+and public deployment remain future work. Reservations, orders, payments,
+fulfillment, transfers, and audit events are implemented modules.
 
 ## Organization and RBAC Decisions
 
@@ -72,7 +73,8 @@ Redis, workers, and payments remain future work.
 - Change stock through a signed delta operation, not an arbitrary quantity
   patch. The repository locks the row with `SELECT ... FOR UPDATE` inside a
   short transaction before validating and updating the quantity.
-- Keep reservations, orders, transfers, and allocation out of this milestone.
+- Keep inventory mutations and reservation creation behind PostgreSQL row locks;
+  orders, transfers, and allocation build on the same tenant-scoped invariants.
 
 ## Reservations and Availability
 
@@ -85,3 +87,15 @@ Redis, workers, and payments remain future work.
   tenant-scoped inventory row lock.
 - Keep reserve retries without an idempotency key as a known limitation until
   order and payment workflows define durable request identity.
+
+## Orders
+
+- Create orders, order items, and reservations in one PostgreSQL transaction.
+- Keep order items independent of warehouses; reservations identify the
+  selected inventory level and allow future multi-warehouse allocation.
+- Preserve SKU and product-name snapshots for historical order identity.
+- Require a tenant-scoped `Idempotency-Key` and canonical request hash for
+  order creation retries.
+- Lock all involved inventory rows in sorted UUID order before reserving stock.
+- Keep only `pending` and `cancelled` order states until payment and fulfillment
+  workflows define additional transitions.

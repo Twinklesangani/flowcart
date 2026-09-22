@@ -1,195 +1,207 @@
 # FlowCart OS
 
-FlowCart OS is a production-style platform for managing multi-warehouse
-orders and fulfilment. The current foundation includes a Next.js frontend, a
-Go API, PostgreSQL infrastructure, initial SaaS tables, and authentication.
+FlowCart OS is a multi-tenant, multi-warehouse order and fulfillment platform.
+It combines inventory correctness, payments, warehouse movement, and a usable
+operations frontend in a deliberately understandable modular monolith.
 
-## Current Stack
+The project models the workflows that make warehouse software difficult:
+reservations must not oversell, orders can span warehouses, payment retries
+must be safe, and operators need a clear history of what happened.
 
-- Next.js 16 with React and TypeScript
-- Tailwind CSS
-- Go with Chi, pgx/pgxpool, and standard `net/http`
-- PostgreSQL 18.6 in Docker
-- `github.com/golang-migrate/migrate/v4`
-- Argon2id passwords and JWT access tokens
+[Portfolio description](docs/portfolio.md) · [Interview demo](docs/interview-demo.md) · [Deployment plan](docs/deployment-plan.md)
 
-## Current Status
+## Engineering Highlights
 
-Implemented:
+- PostgreSQL row locks prevent overselling under concurrent workflows.
+- Deterministic multi-warehouse allocation preserves reservation correctness.
+- Idempotent orders, payments, webhooks, and transfers tolerate retries.
+- Trusted provider events reconcile payment and reservation state transactionally.
+- Warehouse transfers conserve stock from dispatch through receipt.
+- Append-only audit events power operational timelines.
+- Organization membership is the source of truth for tenant isolation and RBAC.
+- Next.js operations screens consume typed APIs without storing access tokens.
 
-- Frontend at `http://localhost:3000`
-- Go API at `http://localhost:8081`
-- PostgreSQL Docker service on host port `5433`, container port `5432`
-- Explicit versioned database migrations
-- Register, login, refresh, logout, and protected `/me` authentication routes
-- HttpOnly refresh-cookie sessions with rotation
-- Organization creation, tenant-scoped access, and role-based member management
-- Tenant-owned products and warehouses with role-based metadata management
-- Tenant-scoped inventory with concurrency-safe stock adjustments and reservations
-- Health endpoint that verifies database connectivity
+## See It
 
-Authentication proves identity. Organization membership is the source of truth
-for tenant authorization and RBAC. Email verification, password reset, MFA,
-OAuth/social login, orders, Redis, workers,
-payments, email invitations, and custom permissions are not implemented yet.
+The seeded Docker demo produces these real application views:
 
-## Repository Structure
+![Operations dashboard](docs/screenshots/dashboard.png)
 
-```text
-flowcart/
-├── apps/
-│   ├── api/
-│   │   ├── cmd/migrate/
-│   │   ├── cmd/server/
-│   │   ├── internal/auth/
-│   │   ├── internal/organization/
-│   │   ├── internal/product/
-│   │   ├── internal/warehouse/
-│   │   ├── internal/inventory/
-│   │   └── migrations/
-│   └── web/src/app/
-├── docs/
-│   ├── architecture.md
-│   ├── authentication.md
-│   ├── database.md
-│   ├── decisions.md
-│   ├── development.md
-│   ├── products.md
-│   └── warehouses.md
-└── AGENTS.md
+![Orders and fulfillment](docs/screenshots/orders.png)
+
+![Inventory and replenishment](docs/screenshots/inventory.png)
+
+## Architecture
+
+```mermaid
+flowchart TD
+    Browser[Browser] --> Web[Next.js frontend]
+    Web --> API[Go Chi API]
+    API --> Handler[Handler]
+    Handler --> Service[Service]
+    Service --> Repository[Repository]
+    Repository --> DB[(PostgreSQL)]
+    Service -. provider calls .-> Stripe[Stripe adapter/webhooks]
+    Stripe -. verified events .-> API
 ```
 
-## Prerequisites
+The backend flow is `handler -> service -> repository -> PostgreSQL`. There are
+no Redis, Kafka, Kubernetes, or microservice dependencies in the current build.
 
-- Node.js and npm
-- Go
-- Windows PowerShell
-- Docker Desktop with its Linux engine running
+## Domain Workflow
 
-The existing local PostgreSQL installation uses port `5432`. Do not stop or
-modify it. FlowCart Docker PostgreSQL uses `5433:5432`.
+```mermaid
+flowchart TD
+    Order --> Allocation --> Reservation --> Payment --> Committed[Committed stock]
+    Committed --> Fulfillment --> Consumption[Inventory consumption]
+    LowStock[Low stock] --> Recommendation --> Transfer --> Dispatch --> Receive
+```
 
-## Start PostgreSQL
+## Stack
 
-From the project root:
+- Next.js 16, React, TypeScript, Tailwind CSS
+- Go, Chi, pgx/pgxpool
+- PostgreSQL with explicit migrations through `000015`
+- Argon2id passwords, JWT access tokens, HttpOnly refresh cookies
+- Optional Stripe provider and verified webhooks
+
+## Local Setup
+
+Prerequisites: Docker Desktop, Go, Node.js/npm, and Windows PowerShell.
 
 ```powershell
 docker compose up -d postgres
-docker compose ps
-docker compose logs postgres
-```
 
-Stop the service without deleting its volume:
-
-```powershell
-docker compose down
-```
-
-## Run Migrations
-
-From `apps/api`:
-
-```powershell
-$env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
-go run ./cmd/migrate up
-```
-
-Roll back the latest migration:
-
-```powershell
-go run ./cmd/migrate down
-```
-
-Migrations are explicit and are not run by server startup.
-
-## Run the Backend
-
-From `apps/api`:
-
-```powershell
-$env:PORT="8081"
+cd apps\api
 $env:DATABASE_URL="postgres://flowcart:flowcart_dev@localhost:5433/flowcart?sslmode=disable"
 $env:APP_ENV="development"
-$bytes = New-Object byte[] 64
-$bytes = New-Object byte[] 64
-$rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-$rng.GetBytes($bytes)
-$rng.Dispose()
-$env:JWT_SECRET = [Convert]::ToBase64String($bytes)
+go run ./cmd/migrate up
+$env:FLOWCART_SEED_CONFIRM="FLOWCART_DEMO"
+go run ./cmd/seed
+$env:PORT="8081"
+$env:JWT_SECRET="replace-with-a-long-development-secret"
 go run ./cmd/server
 ```
 
-`ACCESS_TOKEN_TTL` defaults to `15m` and `REFRESH_TOKEN_TTL` defaults to `168h`.
-`JWT_SECRET` is required. Generate your own random value for each local
-environment and never commit it. Production deployments must provide the
-secret through a secret manager or other secure environment configuration.
-
-## Run the Frontend
-
-From `apps/web`:
+In another terminal:
 
 ```powershell
+cd apps\web
+npm ci
 npm run dev
 ```
 
-Open `http://localhost:3000`. The frontend uses `NEXT_PUBLIC_API_URL`, keeps
-access tokens in runtime memory, and uses credentials for refresh-cookie
-requests.
+Open `http://localhost:3000`. The API health endpoint is
+`http://localhost:8081/health`. Stop PostgreSQL with `docker compose down`; do
+not use `docker compose down -v` unless intentionally deleting the volume.
+If port `8081` is already occupied, choose another local API port and set
+`NEXT_PUBLIC_API_URL` to the matching URL before starting the frontend.
 
-## Health
+## Demo Seed
+
+The development-only seed creates `FlowCart Demo Retail` with Melbourne,
+Sydney, and Brisbane warehouses; 14 products; healthy, low, out-of-stock, and
+unconfigured inventory; orders; payments; fulfillment; transfers; and audit
+history. It is deterministic and safe to rerun for the demo organization.
+
+Demo accounts use the password `FlowCart-Demo-Only-2026!`.
+
+| Role              | Email                 |
+| ----------------- | --------------------- |
+| Owner             | owner@flowcart.demo   |
+| Warehouse manager | manager@flowcart.demo |
+| Viewer            | viewer@flowcart.demo  |
+
+**DEMO ONLY - NEVER USE IN PRODUCTION.**
+
+The seed is deterministic demo data, not a backup. It does not reproduce
+manually created orders, transfers, or later workflow history. See
+[docs/backup-restore.md](docs/backup-restore.md) for disposable recovery proof.
+
+## API and deployment
+
+The public API contract is documented in [docs/openapi.yaml](docs/openapi.yaml).
+The current application is not deployed. The provisional design is Cloudflare
+Workers using OpenNext for the Next.js frontend, Render Free for the Go API,
+and Neon Free for PostgreSQL. Static Cloudflare Pages export is not used:
+the App Router contains a dynamic order route and runtime client authentication.
+Hosted browser sessions should use `app.example.com` and `api.example.com`
+under the same registrable domain. The API cookie remains host-only on
+`api.example.com`; exact CORS and the existing Origin checks remain enabled.
+Cloudflare, Render, Neon, a custom domain, DNS, and provider pricing are not
+configured or verified here. AWS is an architectural equivalent only, not a
+platform used by this project.
+
+## Testing
+
+Backend tests include unit tests and real PostgreSQL integration tests for
+tenant isolation, reservations, allocation, payments, fulfillment, transfers,
+and concurrency-sensitive stock operations. Frontend validation includes lint,
+TypeScript checking, production build, and route smoke checks.
+
+```powershell
+cd apps\api
+go test ./... -count=1
+go vet ./...
+go build ./...
+
+cd ..\web
+npm run lint
+npx tsc --noEmit
+npm run build
+```
+
+## Project Structure
 
 ```text
-GET http://localhost:8081/health
+apps/api/cmd/{migrate,seed,server}
+apps/api/internal/{auth,organization,product,warehouse,inventory,order,payment,fulfillment,transfer,audit}
+apps/api/migrations/000001-000015
+apps/web/src/app
+apps/web/src/components
+apps/web/src/lib
+.github/workflows/ci.yml
+docker-compose.yml
+docs/
 ```
 
-```json
-{
-  "status": "ok",
-  "service": "flowcart-api",
-  "database": "ok"
-}
-```
+## Consistency and Tradeoffs
 
-## Authentication Routes
+FlowCart favors a modular monolith and PostgreSQL transactions over premature
+distributed infrastructure. Integer minor units protect money calculations;
+row locking protects stock; idempotency keys protect retries; tenant-scoped
+queries protect organizations. Email verification, MFA, background workers,
+real-time updates, analytics infrastructure, and production deployment are
+not implemented.
 
-- `POST /api/v1/auth/register`
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
-- `POST /api/v1/auth/logout`
-- `GET /api/v1/auth/me`
+Security hardening includes bounded request bodies, authentication rate
+limiting, production CORS/config validation, secure refresh-cookie settings,
+JWT expiry enforcement, and security headers. Additional deployment hardening
+and security verification remain planned before public hosting.
 
-See [docs/authentication.md](docs/authentication.md) for security details.
+## More Screenshots
 
-## Organization Routes
+![Order detail and timeline](docs/screenshots/order-detail.png)
+![Replenishment recommendations](docs/screenshots/replenishment.png)
+![Transfer detail and timeline](docs/screenshots/transfer-detail.png)
+![Audit log](docs/screenshots/audit-log.png)
 
-- `POST /api/v1/organizations`
-- `GET /api/v1/organizations`
-- `GET /api/v1/organizations/{organizationID}`
-- `PATCH /api/v1/organizations/{organizationID}`
-- `GET /api/v1/organizations/{organizationID}/members`
-- `POST /api/v1/organizations/{organizationID}/members`
-- `PATCH /api/v1/organizations/{organizationID}/members/{userID}`
-- `DELETE /api/v1/organizations/{organizationID}/members/{userID}`
+## Testing Story
 
-See [docs/organizations.md](docs/organizations.md) for tenant isolation and
-role capabilities.
+The repository combines Go unit tests, real PostgreSQL integration tests,
+concurrency tests, tenant/RBAC tests, payment and webhook tests, migration
+verification, frontend lint/type/build checks, and Docker-backed demo
+verification. GitHub Actions runs the normal backend and frontend checks;
+extended stress matrices are not part of every CI run.
 
-## Product and Warehouse Routes
+## Roadmap
 
-- `POST|GET /api/v1/organizations/{organizationID}/products`
-- `GET|PATCH /api/v1/organizations/{organizationID}/products/{productID}`
-- `POST|GET /api/v1/organizations/{organizationID}/warehouses`
-- `GET|PATCH /api/v1/organizations/{organizationID}/warehouses/{warehouseID}`
+CI and portfolio packaging are complete. Public deployment is intentionally
+blocked until S4 frontend session isolation, S5 payment reconciliation
+lifecycle, S6 collection/batch limits, S7 membership/email security, and final
+security verification are complete.
 
-## Inventory Routes
+## Acknowledgements
 
-- `POST|GET /api/v1/organizations/{organizationID}/inventory`
-- `GET /api/v1/organizations/{organizationID}/inventory/{inventoryID}`
-- `POST /api/v1/organizations/{organizationID}/inventory/{inventoryID}/adjust`
-- `POST /api/v1/organizations/{organizationID}/inventory/{inventoryID}/reservations`
-- `POST /api/v1/organizations/{organizationID}/reservations/{reservationID}/release`
-
-See [docs/products.md](docs/products.md) and
-[docs/warehouses.md](docs/warehouses.md). See [docs/inventory.md](docs/inventory.md)
-for tenant scoping, RBAC, stock adjustments, and availability. See
-[docs/reservations.md](docs/reservations.md) for reservation lifecycle details.
+FlowCart is independently implemented as a portfolio project using the Go,
+PostgreSQL, Next.js, and Tailwind ecosystems.

@@ -3,7 +3,7 @@
 ## Architecture
 
 Authentication proves the identity of a user. Organization authorization and
-RBAC will be added later and are deliberately separate.
+RBAC are deliberately separate and are implemented by membership middleware.
 
 ```text
 HTTP handler -> auth service -> auth repository -> PostgreSQL
@@ -109,6 +109,6 @@ clears local runtime state.
 
 ## Not Implemented
 
-Email verification, password reset, MFA, OAuth/social login, organization
-creation, invitations, organization authorization/RBAC, and admin workflows
-are not implemented.
+Email verification, password reset, MFA, OAuth/social login, invitations, and
+email-based membership onboarding are not implemented. Organization creation,
+membership authorization, RBAC, and owner/admin workflows are implemented.

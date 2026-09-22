@@ -1,17 +1,28 @@
+# Smart allocation
+
+Automatic orders use a pure allocator behind the order service. The database
+repository owns tenant-scoped candidate discovery, deterministic inventory
+locking, effective availability, pricing snapshots, and atomic reservations.
+See [allocation.md](allocation.md) for the strategy and concurrency contract.
+
 # FlowCart OS Architecture
+
+## Warehouse Transfers
+
+Warehouse transfers are transactional aggregates. Dispatch locks all source and destination inventory rows in globally sorted UUID order, deducts source stock, and records `transfer_out` movements. Receipt adds destination stock and records `transfer_in` movements. In-transit quantities are derived from transfer items rather than a second mutable stock balance.
 
 ## Current Architecture
 
-```text
-Browser
-  -> Next.js / React / TypeScript / Tailwind
-  -> HTTP with credentialed development CORS
-  -> Go / Chi / net/http
-  -> Authentication handler
-  -> Authentication service
-  -> Authentication repository
-  -> pgxpool
-  -> PostgreSQL 18.6
+```mermaid
+flowchart TD
+    Browser[Browser] --> Web[Next.js frontend]
+    Web --> API[Go Chi API]
+    API --> Handler[Handler]
+    Handler --> Service[Service]
+    Service --> Repository[Repository]
+    Repository --> DB[(PostgreSQL)]
+    Service -. provider calls .-> Stripe[Stripe adapter/webhooks]
+    Stripe -. verified events .-> API
 ```
 
 The browser talks to the Go API at `http://localhost:8081`. The frontend runs
@@ -27,7 +38,11 @@ handler, service, repository, tenant middleware, and authorization helpers.
 Products and warehouses are separate tenant-owned modules following the same
 handler -> service -> repository -> PostgreSQL flow. Inventory follows the same
 flow and uses a shared inventory-row transaction for stock adjustments and
-reservations.
+reservations. Orders use one transaction for the order, item snapshots, and
+linked reservations. Payment attempts use tenant-safe snapshots and provider
+calls outside database locks. Fulfillment uses sorted inventory locks, then the
+order, then sorted reservations to deduct physical stock, consume committed
+reservations, update order state, and append movement history atomically.
 Authentication proves identity; organization membership proves tenant access.
 
 ## Authentication Flow
@@ -44,9 +59,11 @@ PostgreSQL Docker uses host port `5433` mapped to container port `5432`. The
 existing local PostgreSQL installation on port `5432` is not modified.
 
 Versioned SQL migrations use `github.com/golang-migrate/migrate/v4` and are run
-explicitly through `apps/api/cmd/migrate`. The current schema includes
-`users`, `organizations`, `organization_members`, `auth_sessions`, `products`,
-`warehouses`, and `inventory_levels`.
+explicitly through `apps/api/cmd/migrate`. The current schema reaches
+`000015` and includes orders, pricing snapshots, payments, trusted provider
+events, fulfillment, allocation metadata, transfers, replenishment policies,
+append-only audit events, and refresh-session families in addition to the core
+SaaS tables.
 `schema_migrations` is migration-tool metadata, not a domain table.
 
 The authentication migration adds a case-insensitive unique index on
@@ -65,7 +82,7 @@ update organizations and manage members. Only owners can assign or manage
 owners; admins cannot modify owners. Last-owner changes are protected with
 transactional row locking.
 
-## Future Phases
+## Deliberately Deferred
 
-Email verification, password reset, MFA, orders,
-Redis, workers, payments, and AWS infrastructure are not implemented.
+Email verification, password reset, MFA, Redis, workers, real-time updates,
+analytics infrastructure, and public deployment are not implemented.

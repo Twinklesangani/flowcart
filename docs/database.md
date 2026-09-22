@@ -1,4 +1,14 @@
+# M14 schema
+
+Migration `000011_smart_allocation` adds strict `allocation_method` and
+`allocation_strategy` audit metadata to orders. Existing and manual orders are
+`manual` with no strategy; automatic orders use `minimize_splits_v1`.
+
 # FlowCart OS Database
+
+## Transfer Data
+
+Migration 000012 adds `inventory_transfers` and `inventory_transfer_items`, then extends `inventory_movements` with transfer references and `transfer_out` / `transfer_in` movement types. Transfer foreign keys include `organization_id` to preserve tenant isolation. Destination inventory levels are created at transfer creation with the existing `(organization_id, product_id, warehouse_id)` uniqueness constraint.
 
 ## Current Database
 
@@ -31,7 +41,7 @@ Migration files use:
 <version>_<description>.down.sql
 ```
 
-Current migrations:
+Current migrations through `000015`:
 
 ```text
 migrations/000001_core_saas_tables.up.sql
@@ -44,6 +54,26 @@ migrations/000004_inventory_levels.up.sql
 migrations/000004_inventory_levels.down.sql
 migrations/000005_inventory_reservations.up.sql
 migrations/000005_inventory_reservations.down.sql
+migrations/000006_orders.up.sql
+migrations/000006_orders.down.sql
+migrations/000007_product_pricing_and_order_totals.up.sql
+migrations/000007_product_pricing_and_order_totals.down.sql
+migrations/000008_payments.up.sql
+migrations/000008_payments.down.sql
+migrations/000009_trusted_payments_and_webhooks.up.sql
+migrations/000009_trusted_payments_and_webhooks.down.sql
+migrations/000010_fulfillment_and_inventory_movements.up.sql
+migrations/000010_fulfillment_and_inventory_movements.down.sql
+migrations/000011_smart_allocation.up.sql
+migrations/000011_smart_allocation.down.sql
+migrations/000012_inventory_transfers.up.sql
+migrations/000012_inventory_transfers.down.sql
+migrations/000013_replenishment_policies.up.sql
+migrations/000013_replenishment_policies.down.sql
+migrations/000014_audit_events.up.sql
+migrations/000014_audit_events.down.sql
+migrations/000015_auth_session_families.up.sql
+migrations/000015_auth_session_families.down.sql
 ```
 
 The migration tool creates `schema_migrations` to track versions. It is
@@ -61,6 +91,29 @@ Current application tables are:
 - `warehouses`
 - `inventory_levels`
 - `inventory_reservations`
+- `orders`
+- `order_items`
+- `payments`
+- `payment_provider_events`
+- `fulfillments`
+- `fulfillment_items`
+- `inventory_movements`
+- `inventory_transfers`
+- `inventory_transfer_items`
+- `audit_events`
+
+Migration highlights:
+
+- `000006` adds tenant-safe orders, item snapshots, and reservations.
+- `000007` adds integer minor-unit pricing and order totals.
+- `000008` adds payment attempts and idempotency.
+- `000009` adds trusted provider identity and durable webhook events.
+- `000010` adds fulfillment, reservation consumption, and inventory movements.
+- `000011` adds deterministic automatic allocation metadata.
+- `000012` adds stock-conserving warehouse transfers.
+- `000013` adds replenishment policies and low-stock recommendations.
+- `000014` adds append-only audit events and timeline indexes.
+- `000015` adds refresh-session families and family-level revocation.
 
 Relationships:
 
@@ -92,6 +145,22 @@ enforces `on_hand_quantity >= 0` with a database check constraint.
 expired reservations. Its composite tenant foreign key references
 `inventory_levels(organization_id, id)`, and positive quantities plus valid
 statuses are enforced by database checks.
+Orders are tenant-scoped and uniquely keyed by `(organization_id,
+idempotency_key)`. Order items preserve product SKU/name snapshots and link
+tenant-safely to orders and products. Order-created reservations optionally
+link to an order item; Milestone 8 manual reservations remain nullable.
+Products optionally store integer `unit_price_minor` and uppercase
+`currency_code`; new orders store currency/subtotal and order items store
+unit-price, currency, and line-total snapshots. Paired-field checks prevent
+half-populated pricing states.
+`payments` stores positive integer-minor-unit payment attempts with immutable
+amount/currency snapshots, tenant-scoped idempotency, and pending/succeeded
+partial uniqueness indexes.
+Trusted payment success commits reservations without reducing physical stock.
+Fulfillment consumes committed reservations and reduces
+`inventory_levels.on_hand_quantity` atomically with fulfillment items and
+append-only inventory movements. Consumed reservations no longer count toward
+availability.
 
 ## Users
 
@@ -128,8 +197,9 @@ The schema enables PostgreSQL's `pgcrypto` extension and uses
 
 ## Not Implemented
 
-Email verification, password reset, MFA, orders,
-Redis, workers, payments, and other future business tables are not implemented.
+Email verification, password reset, MFA,
+Redis, workers, and future business tables outside the current payment,
+fulfillment, transfer, and audit modules are not implemented.
 
 ## Organization Authorization Data
 

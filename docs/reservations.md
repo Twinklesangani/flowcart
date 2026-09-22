@@ -65,10 +65,11 @@ the matching inventory row. Foreign inventory or reservation IDs return `404`.
 Owners, admins, and warehouse managers can reserve and release. Support and
 viewer roles receive `403`. Inventory reads remain available to all members.
 
-## Known Limitation and Future Orders
+## Known Limitation and Order Integration
 
-Reserve POST does not yet implement an idempotency key. A retry after an
-ambiguous network failure could create duplicate reservations. Durable request
-identity should be introduced with future order and payment workflows. Orders,
-order items, reservation conversion, payments, Redis, background jobs, and
-multi-warehouse allocation are intentionally deferred.
+Direct reserve POST does not yet implement an idempotency key. Order creation
+now supplies an order-scoped idempotency key and creates linked reservations
+atomically. Direct payment conversion, Redis, and background jobs remain
+deferred. Order creation, automatic multi-warehouse allocation, payments,
+fulfillment, transfers, and audit events are implemented in later modules and
+preserve the reservation invariant through tenant-scoped transactions.
