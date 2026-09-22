@@ -1,3 +1,12 @@
 .env
 .env.*
 !.env.example
+.audit/
+.operations-test-*/
+apps/web/.next/
+apps/web/node_modules/
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/.open-next/
+apps/web/.wrangler/
+apps/web/.dev.vars
