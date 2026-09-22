@@ -31,7 +31,7 @@ func main() {
 	case "up":
 		err = database.Up()
 	case "down":
-		err = database.Down()
+		err = database.Steps(-1)
 	default:
 		log.Fatalf("unknown migration command %q; use up or down", os.Args[1])
 	}
