@@ -1,0 +1,763 @@
+openapi: 3.0.3
+info:
+  title: FlowCart OS API
+  version: 1.0.0
+  description: |
+    Tenant-scoped REST API for FlowCart OS. Access tokens use the Bearer
+    scheme. Organization routes require membership in the organization named
+    by organizationID. Mutation endpoints use Idempotency-Key where noted.
+servers:
+  - url: http://localhost:8081
+    description: Local development
+  - url: https://api.example.com
+    description: Provisional hosted API origin
+security: []
+tags:
+  - name: Authentication
+  - name: Organizations
+  - name: Products
+  - name: Warehouses
+  - name: Inventory
+  - name: Orders
+  - name: Payments
+  - name: Fulfillment
+  - name: Transfers
+  - name: Audit
+paths:
+  /health:
+    get:
+      tags: [Authentication]
+      summary: Database-backed health check
+      responses:
+        "200": { $ref: "#/components/responses/Health" }
+        "503": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a user in non-production environments
+      requestBody: { $ref: "#/components/requestBodies/Register" }
+      responses:
+        "201": { $ref: "#/components/responses/Auth" }
+        "400": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login and set the HttpOnly refresh cookie
+      requestBody: { $ref: "#/components/requestBodies/Login" }
+      responses:
+        "200": { $ref: "#/components/responses/Auth" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Rotate the refresh session
+      responses:
+        "200": { $ref: "#/components/responses/Auth" }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Revoke the refresh-session family
+      responses:
+        "204": { description: Session revoked or already absent }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/auth/me:
+    get:
+      tags: [Authentication]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          {
+            description: Current user,
+            content:
+              {
+                application/json:
+                  { schema: { $ref: "#/components/schemas/User" } },
+              },
+          }
+        "401": { $ref: "#/components/responses/Error" }
+  /api/v1/organizations:
+    get:
+      tags: [Organizations]
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Organizations visible to the user }
+    post:
+      tags: [Organizations]
+      security: [{ bearerAuth: [] }]
+      requestBody: { $ref: "#/components/requestBodies/Organization" }
+      responses:
+        "201": { description: Organization created }
+        "400": { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{organizationID}/products:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get:
+      tags: [Products]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+        ]
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Page" },
+          "401": { $ref: "#/components/responses/Error" },
+          "404": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      tags: [Products]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+      requestBody: { $ref: "#/components/requestBodies/Product" }
+      responses:
+        {
+          "201": { description: Product created },
+          "400": { $ref: "#/components/responses/Error" },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/warehouses:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get:
+      tags: [Warehouses]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+        ]
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Page" },
+          "401": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      tags: [Warehouses]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+      requestBody: { $ref: "#/components/requestBodies/Warehouse" }
+      responses:
+        {
+          "201": { description: Warehouse created },
+          "400": { $ref: "#/components/responses/Error" },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/inventory:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get:
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+          {
+            name: warehouse_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          },
+          {
+            name: product_id,
+            in: query,
+            schema: { type: string, format: uuid },
+          },
+        ]
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Page" },
+          "400": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+      requestBody: { $ref: "#/components/requestBodies/Inventory" }
+      responses:
+        {
+          "201": { description: Inventory level created },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/inventory/low-stock:
+    get:
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+        ]
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Page" },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/orders:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+          { name: status, in: query, schema: { type: string } },
+          { name: search, in: query, schema: { type: string } },
+        ]
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Page" },
+          "400": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      requestBody: { $ref: "#/components/requestBodies/Order" }
+      responses:
+        {
+          "201": { description: Order created },
+          "409": { $ref: "#/components/responses/Error" },
+          "422": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/orders/auto-allocate:
+    post:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      requestBody: { $ref: "#/components/requestBodies/AutoOrder" }
+      responses:
+        {
+          "201": { description: Automatically allocated order },
+          "409": { $ref: "#/components/responses/Error" },
+          "422": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/orders/{orderID}:
+    get:
+      tags: [Orders]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/OrderID" },
+        ]
+      responses:
+        {
+          "200": { description: Order },
+          "404": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/orders/{orderID}/payments:
+    get:
+      tags: [Payments]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/OrderID" },
+        ]
+      responses:
+        {
+          "200": { description: Payment attempts },
+          "404": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      tags: [Payments]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/OrderID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      responses:
+        {
+          "201": { description: Payment attempt created },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/orders/{orderID}/fulfillments:
+    get:
+      tags: [Fulfillment]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/OrderID" },
+        ]
+      responses:
+        {
+          "200": { description: Fulfillments },
+          "404": { $ref: "#/components/responses/Error" },
+        }
+    post:
+      tags: [Fulfillment]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/OrderID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      responses:
+        {
+          "201": { description: Fulfillment created },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/transfers:
+    get:
+      tags: [Transfers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+          { name: status, in: query, schema: { type: string } },
+        ]
+      responses: { "200": { $ref: "#/components/responses/Page" } }
+    post:
+      tags: [Transfers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      requestBody: { $ref: "#/components/requestBodies/Transfer" }
+      responses:
+        {
+          "201": { description: Transfer created },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/transfers/{transferID}/dispatch:
+    post:
+      tags: [Transfers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/TransferID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      responses:
+        {
+          "200": { description: Transfer dispatched },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/transfers/{transferID}/receive:
+    post:
+      tags: [Transfers]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/TransferID" },
+          { $ref: "#/components/parameters/IdempotencyKey" },
+        ]
+      responses:
+        {
+          "200": { description: Transfer received },
+          "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/audit-events:
+    get:
+      tags: [Audit]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Cursor" },
+          { $ref: "#/components/parameters/Limit" },
+          { name: event_type, in: query, schema: { type: string } },
+          { name: resource_type, in: query, schema: { type: string } },
+        ]
+      responses:
+        {
+          "200": { $ref: "#/components/responses/Page" },
+          "403": { $ref: "#/components/responses/Error" },
+        }
+components:
+  securitySchemes:
+    bearerAuth: { type: http, scheme: bearer, bearerFormat: JWT }
+  parameters:
+    OrganizationID:
+      {
+        name: organizationID,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    OrderID:
+      {
+        name: orderID,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    TransferID:
+      {
+        name: transferID,
+        in: path,
+        required: true,
+        schema: { type: string, format: uuid },
+      }
+    Cursor:
+      {
+        name: cursor,
+        in: query,
+        schema: { type: string },
+        description: Opaque tenant-bound cursor,
+      }
+    Limit:
+      {
+        name: limit,
+        in: query,
+        schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+      }
+    IdempotencyKey:
+      {
+        name: Idempotency-Key,
+        in: header,
+        required: true,
+        schema: { type: string, minLength: 1, maxLength: 200 },
+      }
+  requestBodies:
+    Register:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [email, password],
+                    properties:
+                      {
+                        email: { type: string, format: email },
+                        password: { type: string, minLength: 8 },
+                        first_name: { type: string },
+                        last_name: { type: string },
+                      },
+                  },
+              },
+          },
+      }
+    Login:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [email, password],
+                    properties:
+                      {
+                        email: { type: string, format: email },
+                        password: { type: string },
+                      },
+                  },
+              },
+          },
+      }
+    Organization:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [name, slug],
+                    properties:
+                      { name: { type: string }, slug: { type: string } },
+                  },
+              },
+          },
+      }
+    Product:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [sku, name],
+                    properties:
+                      {
+                        sku: { type: string },
+                        name: { type: string },
+                        unit_price_minor: { type: integer, minimum: 0 },
+                        currency_code: { type: string },
+                      },
+                  },
+              },
+          },
+      }
+    Warehouse:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [code, name],
+                    properties:
+                      {
+                        code: { type: string },
+                        name: { type: string },
+                        city: { type: string },
+                        state: { type: string },
+                        country_code: { type: string },
+                      },
+                  },
+              },
+          },
+      }
+    Inventory:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [product_id, warehouse_id],
+                    properties:
+                      {
+                        product_id: { type: string, format: uuid },
+                        warehouse_id: { type: string, format: uuid },
+                        on_hand_quantity: { type: integer, minimum: 0 },
+                      },
+                  },
+              },
+          },
+      }
+    Order:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [items],
+                    properties:
+                      {
+                        items:
+                          {
+                            type: array,
+                            items:
+                              {
+                                type: object,
+                                required: [inventory_level_id, quantity],
+                                properties:
+                                  {
+                                    inventory_level_id:
+                                      { type: string, format: uuid },
+                                    quantity: { type: integer, minimum: 1 },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+      }
+    AutoOrder:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [items],
+                    properties:
+                      {
+                        items:
+                          {
+                            type: array,
+                            items:
+                              {
+                                type: object,
+                                required: [product_id, quantity],
+                                properties:
+                                  {
+                                    product_id: { type: string, format: uuid },
+                                    quantity: { type: integer, minimum: 1 },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+      }
+    Transfer:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required:
+                      [source_warehouse_id, destination_warehouse_id, items],
+                    properties:
+                      {
+                        source_warehouse_id: { type: string, format: uuid },
+                        destination_warehouse_id:
+                          { type: string, format: uuid },
+                        items:
+                          {
+                            type: array,
+                            items:
+                              {
+                                type: object,
+                                required: [product_id, quantity],
+                                properties:
+                                  {
+                                    product_id: { type: string, format: uuid },
+                                    quantity: { type: integer, minimum: 1 },
+                                  },
+                              },
+                          },
+                      },
+                  },
+              },
+          },
+      }
+  responses:
+    Auth:
+      {
+        description: Authenticated user and access token; refresh token is cookie-only,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [user, access_token],
+                    properties:
+                      {
+                        user: { $ref: "#/components/schemas/User" },
+                        access_token: { type: string },
+                      },
+                  },
+              },
+          },
+      }
+    Health:
+      {
+        description: API and database are healthy,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    properties:
+                      {
+                        status: { type: string },
+                        service: { type: string },
+                        database: { type: string },
+                      },
+                  },
+              },
+          },
+      }
+    Error:
+      {
+        description: Sanitized error,
+        content:
+          {
+            application/json:
+              { schema: { $ref: "#/components/schemas/Error" } },
+          },
+      }
+    Page:
+      {
+        description: Cursor-paginated response; resource array property depends on endpoint,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    properties:
+                      {
+                        next_cursor: { type: string },
+                        has_more: { type: boolean },
+                        inventory: { type: array, items: { type: object } },
+                        orders: { type: array, items: { type: object } },
+                        transfers: { type: array, items: { type: object } },
+                        events: { type: array, items: { type: object } },
+                      },
+                  },
+              },
+          },
+      }
+  schemas:
+    User:
+      {
+        type: object,
+        required: [id, email],
+        properties:
+          {
+            id: { type: string, format: uuid },
+            email: { type: string, format: email },
+            first_name: { type: string },
+            last_name: { type: string },
+          },
+      }
+    Error:
+      {
+        type: object,
+        required: [error],
+        properties:
+          {
+            error:
+              {
+                type: object,
+                required: [code, message],
+                properties:
+                  { code: { type: string }, message: { type: string } },
+              },
+          },
+      }
