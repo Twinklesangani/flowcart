@@ -26,6 +26,8 @@ function network(t, custom = () => undefined) {
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (path, options) => {
+    // CI configures an absolute API origin; match the endpoint in both modes.
+    path = new URL(path, "http://localhost").pathname;
     calls.push({ path, options });
     const result = custom(path, options);
     if (result !== undefined) return result;
