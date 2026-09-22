@@ -3,6 +3,7 @@ package product
 import (
 	"context"
 	"errors"
+	"flowcart/apps/api/internal/pagination"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -25,11 +26,11 @@ type Repository struct{ pool *pgxpool.Pool }
 
 func NewRepository(pool *pgxpool.Pool) *Repository { return &Repository{pool: pool} }
 
-const productColumns = `id, organization_id, sku, name, description, is_active, created_at, updated_at`
+const productColumns = `id, organization_id, sku, name, description, is_active, unit_price_minor, currency_code, created_at, updated_at`
 
 func (r *Repository) Create(ctx context.Context, organizationID uuid.UUID, input CreateInput) (Product, error) {
 	var item Product
-	err := r.pool.QueryRow(ctx, `INSERT INTO products (organization_id, sku, name, description, is_active) VALUES ($1,$2,$3,$4,COALESCE($5,TRUE)) RETURNING `+productColumns, organizationID, input.SKU, input.Name, input.Description, input.IsActive).Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.CreatedAt, &item.UpdatedAt)
+	err := r.pool.QueryRow(ctx, `INSERT INTO products (organization_id, sku, name, description, is_active, unit_price_minor, currency_code) VALUES ($1,$2,$3,$4,COALESCE($5,TRUE),$6,$7) RETURNING `+productColumns, organizationID, input.SKU, input.Name, input.Description, input.IsActive, input.UnitPriceMinor, input.CurrencyCode).Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.UnitPriceMinor, &item.CurrencyCode, &item.CreatedAt, &item.UpdatedAt)
 	if isUniqueError(err) {
 		return Product{}, ErrSKUTaken
 	}
@@ -47,7 +48,7 @@ func (r *Repository) List(ctx context.Context, organizationID uuid.UUID) ([]Prod
 	items := make([]Product, 0)
 	for rows.Next() {
 		var item Product
-		if err := rows.Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.UnitPriceMinor, &item.CurrencyCode, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan product: %w", err)
 		}
 		items = append(items, item)
@@ -57,9 +58,42 @@ func (r *Repository) List(ctx context.Context, organizationID uuid.UUID) ([]Prod
 	}
 	return items, nil
 }
+
+func (r *Repository) ListPage(ctx context.Context, organizationID uuid.UUID, limit int, cursor pagination.Cursor) (ListPage, error) {
+	where := "WHERE organization_id=$1"
+	args := []any{organizationID, limit + 1}
+	if cursor.ID != uuid.Nil {
+		where += " AND (created_at,id)<($2,$3)"
+		args = []any{organizationID, cursor.CreatedAt, cursor.ID, limit + 1}
+	}
+	rows, err := r.pool.Query(ctx, `SELECT `+productColumns+` FROM products `+where+` ORDER BY created_at DESC,id DESC LIMIT $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return ListPage{}, fmt.Errorf("list products: %w", err)
+	}
+	defer rows.Close()
+	items := make([]Product, 0, limit+1)
+	for rows.Next() {
+		var item Product
+		if err := rows.Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.UnitPriceMinor, &item.CurrencyCode, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return ListPage{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return ListPage{}, err
+	}
+	page := ListPage{Products: items}
+	if len(items) > limit {
+		page.Products = items[:limit]
+		page.HasMore = true
+		last := page.Products[len(page.Products)-1]
+		page.NextCursor = pagination.EncodeCursor(pagination.Cursor{OrganizationID: organizationID, CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+	return page, nil
+}
 func (r *Repository) Get(ctx context.Context, organizationID, id uuid.UUID) (Product, error) {
 	var item Product
-	err := r.pool.QueryRow(ctx, `SELECT `+productColumns+` FROM products WHERE organization_id=$1 AND id=$2`, organizationID, id).Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.CreatedAt, &item.UpdatedAt)
+	err := r.pool.QueryRow(ctx, `SELECT `+productColumns+` FROM products WHERE organization_id=$1 AND id=$2`, organizationID, id).Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.UnitPriceMinor, &item.CurrencyCode, &item.CreatedAt, &item.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Product{}, ErrNotFound
 	}
@@ -70,7 +104,7 @@ func (r *Repository) Get(ctx context.Context, organizationID, id uuid.UUID) (Pro
 }
 func (r *Repository) Update(ctx context.Context, organizationID, id uuid.UUID, patch PatchInput) (Product, error) {
 	var item Product
-	err := r.pool.QueryRow(ctx, `UPDATE products SET sku=COALESCE($3,sku), name=COALESCE($4,name), description=COALESCE($5,description), is_active=COALESCE($6,is_active), updated_at=NOW() WHERE organization_id=$1 AND id=$2 RETURNING `+productColumns, organizationID, id, patch.SKU, patch.Name, patch.Description, patch.IsActive).Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.CreatedAt, &item.UpdatedAt)
+	err := r.pool.QueryRow(ctx, `UPDATE products SET sku=COALESCE($3,sku), name=COALESCE($4,name), description=COALESCE($5,description), is_active=COALESCE($6,is_active), unit_price_minor=COALESCE($7,unit_price_minor), currency_code=COALESCE($8,currency_code), updated_at=NOW() WHERE organization_id=$1 AND id=$2 RETURNING `+productColumns, organizationID, id, patch.SKU, patch.Name, patch.Description, patch.IsActive, patch.UnitPriceMinor, patch.CurrencyCode).Scan(&item.ID, &item.OrganizationID, &item.SKU, &item.Name, &item.Description, &item.IsActive, &item.UnitPriceMinor, &item.CurrencyCode, &item.CreatedAt, &item.UpdatedAt)
 	if isUniqueError(err) {
 		return Product{}, ErrSKUTaken
 	}

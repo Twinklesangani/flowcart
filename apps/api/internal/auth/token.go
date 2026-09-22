@@ -38,7 +38,7 @@ func parseAccessToken(value, secret string) (uuid.UUID, error) {
 			return nil, fmt.Errorf("unexpected signing method")
 		}
 		return []byte(secret), nil
-	})
+	}, jwt.WithExpirationRequired())
 	if err != nil || !token.Valid || claims.TokenType != "access" {
 		return uuid.Nil, fmt.Errorf("invalid access token")
 	}

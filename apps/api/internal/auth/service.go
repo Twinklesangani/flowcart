@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/mail"
 	"strings"
 	"time"
@@ -39,7 +40,7 @@ func (service *Service) Register(ctx context.Context, email, password, firstName
 	if err != nil || !validPassword(password) {
 		return AuthResult{}, ErrInvalidInput
 	}
-	passwordHash, err := HashPassword(password)
+	passwordHash, err := hashForRegistration(password)
 	if err != nil {
 		return AuthResult{}, err
 	}
@@ -56,7 +57,17 @@ func (service *Service) Login(ctx context.Context, email, password string) (Auth
 		return AuthResult{}, ErrInvalidCredentials
 	}
 	user, err := service.repository.FindUserByEmail(ctx, email)
-	if err != nil || !VerifyPassword(password, user.PasswordHash) {
+	if errors.Is(err, ErrNotFound) {
+		return AuthResult{}, ErrInvalidCredentials
+	}
+	if err != nil {
+		return AuthResult{}, fmt.Errorf("login user lookup: %w", err)
+	}
+	valid, err := verifyForLogin(password, user.PasswordHash)
+	if err != nil {
+		return AuthResult{}, err
+	}
+	if !valid {
 		return AuthResult{}, ErrInvalidCredentials
 	}
 	return service.issueTokens(ctx, user)
@@ -67,12 +78,18 @@ func (service *Service) Refresh(ctx context.Context, refreshToken string) (AuthR
 		return AuthResult{}, ErrInvalidCredentials
 	}
 	session, err := service.repository.FindActiveSession(ctx, hashRefreshToken(refreshToken))
-	if err != nil {
+	if errors.Is(err, ErrNotFound) {
 		return AuthResult{}, ErrInvalidCredentials
 	}
-	user, err := service.repository.FindUserByID(ctx, session.UserID)
 	if err != nil {
+		return AuthResult{}, fmt.Errorf("refresh session lookup: %w", err)
+	}
+	user, err := service.repository.FindUserByID(ctx, session.UserID)
+	if errors.Is(err, ErrNotFound) {
 		return AuthResult{}, ErrInvalidCredentials
+	}
+	if err != nil {
+		return AuthResult{}, fmt.Errorf("refresh user lookup: %w", err)
 	}
 	return service.rotateTokens(ctx, session, user)
 }
@@ -108,7 +125,10 @@ func (service *Service) rotateTokens(ctx context.Context, oldSession Session, us
 	expiresAt := sessionExpiry(time.Now(), service.refreshTTL)
 	replacement := Session{ID: uuid.New(), UserID: user.ID, RefreshTokenHash: hashRefreshToken(refreshToken), ExpiresAt: expiresAt}
 	if err := service.repository.RotateSession(ctx, oldSession.ID, replacement); err != nil {
-		return AuthResult{}, ErrInvalidCredentials
+		if errors.Is(err, ErrNotFound) {
+			return AuthResult{}, ErrInvalidCredentials
+		}
+		return AuthResult{}, fmt.Errorf("rotate refresh session: %w", err)
 	}
 	return AuthResult{User: user, AccessToken: accessToken, RefreshToken: refreshToken, ExpiresAt: expiresAt}, nil
 }

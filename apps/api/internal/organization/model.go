@@ -53,6 +53,9 @@ const tenantKey tenantContextKey = "organization-tenant-context"
 func withTenant(ctx context.Context, tenant TenantContext) context.Context {
 	return context.WithValue(ctx, tenantKey, tenant)
 }
+func WithTenant(ctx context.Context, tenant TenantContext) context.Context {
+	return withTenant(ctx, tenant)
+}
 func TenantFromContext(ctx context.Context) (TenantContext, bool) {
 	tenant, ok := ctx.Value(tenantKey).(TenantContext)
 	return tenant, ok

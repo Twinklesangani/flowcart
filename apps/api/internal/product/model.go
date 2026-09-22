@@ -7,6 +7,12 @@ import (
 	"github.com/google/uuid"
 )
 
+type ListPage struct {
+	Products   []Product `json:"products"`
+	NextCursor string    `json:"next_cursor,omitempty"`
+	HasMore    bool      `json:"has_more"`
+}
+
 type Product struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`
@@ -14,22 +20,42 @@ type Product struct {
 	Name           string    `json:"name"`
 	Description    *string   `json:"description"`
 	IsActive       bool      `json:"is_active"`
+	UnitPriceMinor *int64    `json:"unit_price_minor"`
+	CurrencyCode   *string   `json:"currency_code"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 type CreateInput struct {
-	SKU         string  `json:"sku"`
-	Name        string  `json:"name"`
-	Description *string `json:"description"`
-	IsActive    *bool   `json:"is_active"`
+	SKU            string  `json:"sku"`
+	Name           string  `json:"name"`
+	Description    *string `json:"description"`
+	IsActive       *bool   `json:"is_active"`
+	UnitPriceMinor *int64  `json:"unit_price_minor"`
+	CurrencyCode   *string `json:"currency_code"`
 }
 
 type PatchInput struct {
-	SKU         *string `json:"sku"`
-	Name        *string `json:"name"`
-	Description *string `json:"description"`
-	IsActive    *bool   `json:"is_active"`
+	SKU            *string `json:"sku"`
+	Name           *string `json:"name"`
+	Description    *string `json:"description"`
+	IsActive       *bool   `json:"is_active"`
+	UnitPriceMinor *int64  `json:"unit_price_minor"`
+	CurrencyCode   *string `json:"currency_code"`
+}
+
+var supportedCurrencies = map[string]bool{"AUD": true, "USD": true, "INR": true}
+
+func normalizeCurrency(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	normalized := strings.ToUpper(strings.TrimSpace(*value))
+	return &normalized
+}
+
+func validCurrency(value *string) bool {
+	return value != nil && supportedCurrencies[*value]
 }
 
 func normalizeSKU(value string) string { return strings.ToUpper(strings.TrimSpace(value)) }

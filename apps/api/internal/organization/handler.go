@@ -4,14 +4,23 @@ import (
 	"encoding/json"
 	"errors"
 	"flowcart/apps/api/internal/auth"
+	"flowcart/apps/api/internal/httpboundary"
+	"net/http"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"net/http"
 )
 
-type Handler struct{ service *Service }
+type Handler struct {
+	service               *Service
+	memberAdditionEnabled bool
+}
 
-func NewHandler(s *Service) *Handler { return &Handler{service: s} }
+func NewHandler(s *Service) *Handler { return NewHandlerForEnvironment(s, true) }
+
+func NewHandlerForEnvironment(s *Service, memberAdditionEnabled bool) *Handler {
+	return &Handler{service: s, memberAdditionEnabled: memberAdditionEnabled}
+}
 
 type organizationInput struct {
 	Name string `json:"name"`
@@ -105,6 +114,10 @@ func (h *Handler) Members(w http.ResponseWriter, r *http.Request) {
 	writeOrganizationJSON(w, http.StatusOK, map[string]any{"members": members})
 }
 func (h *Handler) AddMember(w http.ResponseWriter, r *http.Request) {
+	if !h.memberAdditionEnabled {
+		writeOrganizationError(w, ErrNotFound)
+		return
+	}
 	userID, _ := auth.UserIDFromContext(r.Context())
 	id, err := uuid.Parse(chi.URLParam(r, "organizationID"))
 	if err != nil {
@@ -154,11 +167,7 @@ func (h *Handler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {
-	if json.NewDecoder(r.Body).Decode(target) != nil {
-		writeOrganizationError(w, ErrInvalidInput)
-		return false
-	}
-	return true
+	return httpboundary.Decode(w, r, target, httpboundary.MutationBodyLimit)
 }
 func writeOrganizationJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

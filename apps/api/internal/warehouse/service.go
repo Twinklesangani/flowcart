@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
 	"github.com/google/uuid"
 )
 
@@ -29,6 +30,17 @@ func (s *Service) Create(ctx context.Context, tenant organization.TenantContext,
 }
 func (s *Service) List(ctx context.Context, tenant organization.TenantContext) ([]Warehouse, error) {
 	return s.repository.List(ctx, tenant.OrganizationID)
+}
+func (s *Service) ListPage(ctx context.Context, tenant organization.TenantContext, limit int, cursor pagination.Cursor) (ListPage, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return ListPage{}, ErrInvalidInput
+	}
+	if repository, ok := s.repository.(interface {
+		ListPage(context.Context, uuid.UUID, int, pagination.Cursor) (ListPage, error)
+	}); ok {
+		return repository.ListPage(ctx, tenant.OrganizationID, limit, cursor)
+	}
+	return ListPage{}, errors.New("paged warehouse repository is unavailable")
 }
 func (s *Service) Get(ctx context.Context, tenant organization.TenantContext, id uuid.UUID) (Warehouse, error) {
 	return s.repository.Get(ctx, tenant.OrganizationID, id)

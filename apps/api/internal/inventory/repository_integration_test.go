@@ -129,6 +129,57 @@ func TestInventoryRepositoryConcurrentDecrements(t *testing.T) {
 	}
 }
 
+func TestInventoryRepositoryConcurrentReservations(t *testing.T) {
+	pool := testPool(t)
+	ctx := context.Background()
+	fixture := newInventoryFixture(t, pool, "Inventory Reservation Concurrency")
+	t.Cleanup(func() { _, _ = pool.Exec(ctx, `DELETE FROM organizations WHERE id=$1`, fixture.organizationID) })
+	repository := NewRepository(pool)
+	const attempts = 10
+	const onHand = int64(5)
+	item, err := repository.Create(ctx, fixture.organizationID, CreateInput{ProductID: fixture.productID, WarehouseID: fixture.warehouseID, OnHandQuantity: onHand})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	results := make(chan error, attempts)
+	var wait sync.WaitGroup
+	wait.Add(attempts)
+	for attempt := 0; attempt < attempts; attempt++ {
+		go func() {
+			defer wait.Done()
+			_, reserveErr := repository.Reserve(ctx, fixture.organizationID, item.ID, 1)
+			results <- reserveErr
+		}()
+	}
+	wait.Wait()
+	close(results)
+
+	successes := 0
+	rejections := 0
+	for reserveErr := range results {
+		if reserveErr == nil {
+			successes++
+		} else if errors.Is(reserveErr, ErrInsufficientAvailableStock) {
+			rejections++
+		} else {
+			t.Fatalf("unexpected reservation result: %v", reserveErr)
+		}
+	}
+	final, err := repository.Get(ctx, fixture.organizationID, item.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	oversold := final.ReservedQuantity - final.OnHandQuantity
+	if oversold < 0 {
+		oversold = 0
+	}
+	t.Logf("attempts=%d successes=%d expected_rejections=%d final_stock=%d oversold_count=%d machine_limit=10 concurrent goroutines", attempts, successes, attempts-successes, final.AvailableQuantity, oversold)
+	if successes != int(onHand) || rejections != attempts-int(onHand) || final.AvailableQuantity != 0 || oversold != 0 {
+		t.Fatalf("attempts=%d successes=%d rejections=%d final=%+v oversold=%d", attempts, successes, rejections, final, oversold)
+	}
+}
+
 func TestInventoryRepositoryConcurrentPositiveAdjustments(t *testing.T) {
 	pool := testPool(t)
 	ctx := context.Background()

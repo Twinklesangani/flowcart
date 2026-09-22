@@ -3,9 +3,13 @@ package inventory
 import (
 	"encoding/json"
 	"errors"
+	"flowcart/apps/api/internal/httpboundary"
+	"flowcart/apps/api/internal/pagination"
 	"net/http"
+	"strconv"
 
 	"flowcart/apps/api/internal/organization"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -40,12 +44,40 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	items, err := h.service.List(r.Context(), tenant)
+	limit, err := pagination.ParseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeErrorFromDomain(w, ErrInvalidInput)
+		return
+	}
+	var cursor pagination.Cursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		cursor, err = pagination.DecodeCursor(raw, tenant.OrganizationID)
+		if err != nil {
+			writeErrorFromDomain(w, ErrInvalidInput)
+			return
+		}
+	}
+	var warehouseID, productID uuid.UUID
+	if raw := r.URL.Query().Get("warehouse_id"); raw != "" {
+		warehouseID, err = uuid.Parse(raw)
+		if err != nil {
+			writeErrorFromDomain(w, ErrInvalidInput)
+			return
+		}
+	}
+	if raw := r.URL.Query().Get("product_id"); raw != "" {
+		productID, err = uuid.Parse(raw)
+		if err != nil {
+			writeErrorFromDomain(w, ErrInvalidInput)
+			return
+		}
+	}
+	page, err := h.service.ListPage(r.Context(), tenant, limit, cursor, warehouseID, productID)
 	if err != nil {
 		writeErrorFromDomain(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"inventory": items})
+	writeJSON(w, http.StatusOK, page)
 }
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	tenant, ok := tenantFromRequest(w, r)
@@ -123,6 +155,54 @@ func (h *Handler) Release(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, reservation)
 }
+
+func (h *Handler) UpdateReplenishmentPolicy(w http.ResponseWriter, r *http.Request) {
+	tenant, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	id, err := uuid.Parse(chi.URLParam(r, "inventoryID"))
+	if err != nil {
+		writeError(w, http.StatusNotFound, "inventory_not_found", "Inventory not found.")
+		return
+	}
+	var input ReplenishmentPolicyInput
+	if !decode(w, r, &input) {
+		return
+	}
+	item, err := h.service.UpdateReplenishmentPolicy(r.Context(), tenant, id, input)
+	if err != nil {
+		writeErrorFromDomain(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, item)
+}
+
+func (h *Handler) LowStock(w http.ResponseWriter, r *http.Request) {
+	tenant, ok := tenantFromRequest(w, r)
+	if !ok {
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil {
+			writeErrorFromDomain(w, ErrInvalidInput)
+			return
+		}
+		if parsed < 1 || parsed > pagination.MaxLimit {
+			writeErrorFromDomain(w, ErrInvalidInput)
+			return
+		}
+		limit = parsed
+	}
+	page, err := h.service.LowStockPage(r.Context(), tenant, limit, r.URL.Query().Get("cursor"))
+	if err != nil {
+		writeErrorFromDomain(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, page)
+}
 func tenantFromRequest(w http.ResponseWriter, r *http.Request) (organization.TenantContext, bool) {
 	tenant, ok := organization.TenantFromContext(r.Context())
 	if !ok {
@@ -131,11 +211,7 @@ func tenantFromRequest(w http.ResponseWriter, r *http.Request) (organization.Ten
 	return tenant, ok
 }
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {
-	if json.NewDecoder(r.Body).Decode(target) != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
-		return false
-	}
-	return true
+	return httpboundary.Decode(w, r, target, httpboundary.MutationBodyLimit)
 }
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -147,6 +223,8 @@ func writeError(w http.ResponseWriter, status int, code, message string) {
 }
 func writeErrorFromDomain(w http.ResponseWriter, err error) {
 	switch {
+	case errors.Is(err, ErrManagedReservation):
+		writeError(w, 409, "managed_reservation", "This reservation is managed by the order payment workflow.")
 	case errors.Is(err, ErrInvalidInput):
 		writeError(w, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
 	case errors.Is(err, ErrForbidden):
@@ -167,6 +245,8 @@ func writeErrorFromDomain(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusConflict, "insufficient_available_stock", "There is not enough available stock for this reservation.")
 	case errors.Is(err, ErrReservationNotFound):
 		writeError(w, http.StatusNotFound, "reservation_not_found", "Reservation not found.")
+	case errors.Is(err, ErrInvalidReplenishmentPolicy):
+		writeError(w, http.StatusBadRequest, "invalid_replenishment_policy", "The replenishment policy is invalid.")
 	default:
 		writeError(w, http.StatusInternalServerError, "internal_error", "An unexpected error occurred.")
 	}

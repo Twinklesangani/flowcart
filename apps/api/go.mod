@@ -9,6 +9,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	golang.org/x/crypto v0.45.0
+	github.com/stripe/stripe-go/v86 v86.1.0
 )
 
 require (

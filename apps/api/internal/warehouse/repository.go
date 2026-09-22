@@ -3,6 +3,7 @@ package warehouse
 import (
 	"context"
 	"errors"
+	"flowcart/apps/api/internal/pagination"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -57,6 +58,39 @@ func (r *Repository) List(ctx context.Context, organizationID uuid.UUID) ([]Ware
 	}
 	return items, nil
 }
+
+func (r *Repository) ListPage(ctx context.Context, organizationID uuid.UUID, limit int, cursor pagination.Cursor) (ListPage, error) {
+	where := "WHERE organization_id=$1"
+	args := []any{organizationID, limit + 1}
+	if cursor.ID != uuid.Nil {
+		where += " AND (created_at,id)<($2,$3)"
+		args = []any{organizationID, cursor.CreatedAt, cursor.ID, limit + 1}
+	}
+	rows, err := r.pool.Query(ctx, `SELECT `+warehouseColumns+` FROM warehouses `+where+` ORDER BY created_at DESC,id DESC LIMIT $`+fmt.Sprint(len(args)), args...)
+	if err != nil {
+		return ListPage{}, fmt.Errorf("list warehouses: %w", err)
+	}
+	defer rows.Close()
+	items := make([]Warehouse, 0, limit+1)
+	for rows.Next() {
+		var item Warehouse
+		if err := rows.Scan(&item.ID, &item.OrganizationID, &item.Code, &item.Name, &item.AddressLine1, &item.AddressLine2, &item.City, &item.State, &item.PostalCode, &item.CountryCode, &item.IsActive, &item.CreatedAt, &item.UpdatedAt); err != nil {
+			return ListPage{}, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		return ListPage{}, err
+	}
+	page := ListPage{Warehouses: items}
+	if len(items) > limit {
+		page.Warehouses = items[:limit]
+		page.HasMore = true
+		last := page.Warehouses[len(page.Warehouses)-1]
+		page.NextCursor = pagination.EncodeCursor(pagination.Cursor{OrganizationID: organizationID, CreatedAt: last.CreatedAt, ID: last.ID})
+	}
+	return page, nil
+}
 func (r *Repository) Get(ctx context.Context, organizationID, id uuid.UUID) (Warehouse, error) {
 	var item Warehouse
 	err := r.pool.QueryRow(ctx, `SELECT `+warehouseColumns+` FROM warehouses WHERE organization_id=$1 AND id=$2`, organizationID, id).Scan(&item.ID, &item.OrganizationID, &item.Code, &item.Name, &item.AddressLine1, &item.AddressLine2, &item.City, &item.State, &item.PostalCode, &item.CountryCode, &item.IsActive, &item.CreatedAt, &item.UpdatedAt)
@@ -70,6 +104,12 @@ func (r *Repository) Get(ctx context.Context, organizationID, id uuid.UUID) (War
 }
 func (r *Repository) Update(ctx context.Context, organizationID, id uuid.UUID, patch PatchInput) (Warehouse, error) {
 	var item Warehouse
+	if err := r.pool.QueryRow(ctx, `SELECT id FROM warehouses WHERE organization_id=$1 AND id=$2 FOR UPDATE`, organizationID, id).Scan(&item.ID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return Warehouse{}, ErrNotFound
+		}
+		return Warehouse{}, fmt.Errorf("lock warehouse for update: %w", err)
+	}
 	err := r.pool.QueryRow(ctx, `UPDATE warehouses SET code=COALESCE($3,code), name=COALESCE($4,name), address_line1=COALESCE($5,address_line1), address_line2=COALESCE($6,address_line2), city=COALESCE($7,city), state=COALESCE($8,state), postal_code=COALESCE($9,postal_code), country_code=COALESCE($10,country_code), is_active=COALESCE($11,is_active), updated_at=NOW() WHERE organization_id=$1 AND id=$2 RETURNING `+warehouseColumns, organizationID, id, patch.Code, patch.Name, patch.AddressLine1, patch.AddressLine2, patch.City, patch.State, patch.PostalCode, patch.CountryCode, patch.IsActive).Scan(&item.ID, &item.OrganizationID, &item.Code, &item.Name, &item.AddressLine1, &item.AddressLine2, &item.City, &item.State, &item.PostalCode, &item.CountryCode, &item.IsActive, &item.CreatedAt, &item.UpdatedAt)
 	if isUniqueError(err) {
 		return Warehouse{}, ErrCodeTaken

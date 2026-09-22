@@ -3,6 +3,8 @@ package product
 import (
 	"encoding/json"
 	"errors"
+	"flowcart/apps/api/internal/httpboundary"
+	"flowcart/apps/api/internal/pagination"
 	"net/http"
 
 	"flowcart/apps/api/internal/organization"
@@ -37,12 +39,25 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required.")
 		return
 	}
-	items, err := h.service.List(r.Context(), tenant)
+	limit, err := pagination.ParseLimit(r.URL.Query().Get("limit"))
+	if err != nil {
+		writeErrorFromDomain(w, ErrInvalidInput)
+		return
+	}
+	var cursor pagination.Cursor
+	if raw := r.URL.Query().Get("cursor"); raw != "" {
+		cursor, err = pagination.DecodeCursor(raw, tenant.OrganizationID)
+		if err != nil {
+			writeErrorFromDomain(w, ErrInvalidInput)
+			return
+		}
+	}
+	page, err := h.service.ListPage(r.Context(), tenant, limit, cursor)
 	if err != nil {
 		writeErrorFromDomain(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"products": items})
+	writeJSON(w, http.StatusOK, page)
 }
 func (h *Handler) Get(w http.ResponseWriter, r *http.Request) {
 	tenant, ok := organization.TenantFromContext(r.Context())
@@ -85,11 +100,7 @@ func (h *Handler) Update(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, item)
 }
 func decode(w http.ResponseWriter, r *http.Request, target any) bool {
-	if json.NewDecoder(r.Body).Decode(target) != nil {
-		writeError(w, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
-		return false
-	}
-	return true
+	return httpboundary.Decode(w, r, target, httpboundary.MutationBodyLimit)
 }
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json")

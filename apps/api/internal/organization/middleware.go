@@ -2,8 +2,9 @@ package organization
 
 import (
 	"flowcart/apps/api/internal/auth"
-	"github.com/google/uuid"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 func Membership(service *Service, organizationID func(*http.Request) (uuid.UUID, error)) func(http.Handler) http.Handler {
@@ -19,9 +20,9 @@ func Membership(service *Service, organizationID func(*http.Request) (uuid.UUID,
 				writeOrganizationError(w, ErrNotFound)
 				return
 			}
-			membership, err := service.repository.FindMembership(r.Context(), id, userID)
+			membership, err := service.Membership(r.Context(), id, userID)
 			if err != nil {
-				writeOrganizationError(w, ErrNotFound)
+				writeOrganizationError(w, err)
 				return
 			}
 			next.ServeHTTP(w, r.WithContext(withTenant(r.Context(), TenantContext{OrganizationID: id, UserID: userID, Role: membership.Role})))

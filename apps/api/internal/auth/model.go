@@ -16,6 +16,7 @@ type User struct {
 
 type Session struct {
 	ID               uuid.UUID
+	FamilyID         uuid.UUID
 	UserID           uuid.UUID
 	RefreshTokenHash string
 	ExpiresAt        time.Time

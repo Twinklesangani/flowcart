@@ -7,6 +7,12 @@ import (
 	"github.com/google/uuid"
 )
 
+type ListPage struct {
+	Warehouses []Warehouse `json:"warehouses"`
+	NextCursor string      `json:"next_cursor,omitempty"`
+	HasMore    bool        `json:"has_more"`
+}
+
 type Warehouse struct {
 	ID             uuid.UUID `json:"id"`
 	OrganizationID uuid.UUID `json:"organization_id"`

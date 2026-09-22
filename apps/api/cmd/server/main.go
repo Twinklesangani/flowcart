@@ -26,15 +26,23 @@ func main() {
 	pool, err := database.NewPool(startupContext, cfg.DatabaseURL)
 	cancelStartup()
 	if err != nil {
-		log.Fatalf("connect to PostgreSQL: %v", err)
+		log.Fatal("connect to PostgreSQL failed; check DATABASE_URL and database availability")
 	}
 	defer pool.Close()
 
 	authRepository := auth.NewRepository(pool)
 	authService := auth.NewService(authRepository, cfg.JWTSecret, cfg.AccessTokenTTL, cfg.RefreshTokenTTL)
+	handler, checkoutService, err := httpapi.NewRouterWithCheckout(pool, authService, cfg.AppEnv, cfg.Origins)
+	if err != nil {
+		log.Fatalf("configure payment provider: %v", err)
+	}
 	server := &http.Server{
-		Addr:    ":" + cfg.Port,
-		Handler: httpapi.NewRouter(pool, authService, cfg.AppEnv),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      120 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		Addr:              ":" + cfg.Port,
+		Handler:           handler,
 	}
 
 	serverErrors := make(chan error, 1)
@@ -43,16 +51,20 @@ func main() {
 		serverErrors <- server.ListenAndServe()
 	}()
 
-	shutdownSignals := make(chan os.Signal, 1)
-	signal.Notify(shutdownSignals, os.Interrupt, syscall.SIGTERM)
+	serverContext, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if checkoutService != nil {
+		go checkoutService.Run(serverContext, func() { log.Printf("payment reconciliation failed") })
+	}
 
 	select {
 	case err := <-serverErrors:
+		stop()
 		if !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("server failed: %v", err)
 		}
-	case signal := <-shutdownSignals:
-		log.Printf("shutdown signal received: %s", signal)
+	case <-serverContext.Done():
+		log.Printf("shutdown signal received")
 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
