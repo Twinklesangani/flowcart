@@ -38,7 +38,11 @@ The API sends nosniff, no-referrer, and DENY framing headers. Auth no-store and
 transient checkout client-secret no-store are preserved. Next.js sends nosniff,
 strict-origin-when-cross-origin, DENY, a CSP, and disables unused camera,
 microphone and geolocation permissions. No static asset cache policy is changed.
-TLS termination, HTTPS redirects, and HSTS belong to the eventual hosting layer.
+The Cloudflare Worker redirects HTTP requests to HTTPS before routing and adds
+`Strict-Transport-Security: max-age=31536000` to HTTPS responses without
+`includeSubDomains`. This is applied at the Worker entry point so it covers both
+the Next.js frontend and same-origin `/api` proxy responses without weakening or
+duplicating the application security headers.
 
 The CSP permits connections only to self and the configured API origin; local
 HMR websocket origins are added in development. Stripe.js is not used and has no
@@ -78,10 +82,11 @@ a production build; inspect actual production headers and hydration/static asset
   lifecycle, and S6 collection/batch limits. R1 Worker buffering and R2 TransfersView
   request-loop fixes are complete. Linux OpenNext build and the isolated Neon
   snapshot/authentication/RBAC checks are verified checkpoints.
-- DEPLOYMENT VERIFICATION REQUIRED: provider secret storage, exact HTTPS origins,
-  TLS, health checks, log redaction, actual Worker proxy/cookie/browser behavior,
-  and backup/recovery/rollback. Render service is not created; Cloudflare frontend
-  is not started. Hosted production security is not yet verified.
+- DEPLOYMENT VERIFICATION REQUIRED: hosted role-based login, valid-cookie
+  refresh/logout, session isolation, and backup/recovery/rollback. Worker routing,
+  HTTPS redirect, response headers, Render health, and database connectivity must
+  be rechecked after each deployment. Hosted production security is not a
+  certification.
 - DEFERRED: S7 email verification/invitation and membership onboarding, which are
   not implemented and are not applicable to this demo's existing-account workflow.
 

@@ -45,6 +45,13 @@ async function ownerContext(page: Page) {
   return loginBody.access_token;
 }
 
+test("products page is available inside the authenticated operations shell", async ({ page }) => {
+  await login(page, ownerEmail);
+  await page.goto("/products");
+  await expect(page.getByRole("heading", { name: "Products", exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Primary navigation" }).getByRole("link", { name: "Products" })).toHaveClass(/active/);
+});
+
 test("owner workflow, denied viewer action, and logout survive a disposable seeded environment", async ({ browser, page }) => {
   const token = await ownerContext(page);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();

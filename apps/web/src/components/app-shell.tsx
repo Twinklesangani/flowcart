@@ -6,7 +6,7 @@ import { ReactNode, useState } from "react";
 import { AuthScreen, canOperate, useSession } from "../lib/session";
 import { LoadingState } from "./states";
 
-const navigation = [{ href: "/dashboard", label: "Dashboard" }, { href: "/orders", label: "Orders" }, { href: "/inventory", label: "Inventory" }, { href: "/transfers", label: "Transfers" }];
+const navigation = [{ href: "/dashboard", label: "Dashboard" }, { href: "/products", label: "Products" }, { href: "/orders", label: "Orders" }, { href: "/inventory", label: "Inventory" }, { href: "/transfers", label: "Transfers" }];
 
 export function ProtectedShell({ children }: { children: ReactNode }) {
   const session = useSession();

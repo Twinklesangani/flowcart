@@ -1,5 +1,6 @@
 import nextWorker from "./.open-next/worker.js";
 import { proxyApi } from "./worker/api-proxy.mjs";
+import { secureWorkerResponse } from "./worker/transport-security.mjs";
 
 type WorkerEnv = {
   API_ORIGIN: string;
@@ -15,9 +16,11 @@ type NextWorker = {
 
 const worker = {
   async fetch(request: Request, env: WorkerEnv, context: WorkerExecutionContext) {
-    const pathname = new URL(request.url).pathname;
-    if (pathname === "/api" || pathname.startsWith("/api/")) return proxyApi(request, env);
-    return (nextWorker as NextWorker).fetch(request, env, context);
+    return secureWorkerResponse(request, async () => {
+      const pathname = new URL(request.url).pathname;
+      if (pathname === "/api" || pathname.startsWith("/api/")) return proxyApi(request, env);
+      return (nextWorker as NextWorker).fetch(request, env, context);
+    });
   },
 };
 
