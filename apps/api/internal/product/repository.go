@@ -40,7 +40,7 @@ func (r *Repository) Create(ctx context.Context, organizationID uuid.UUID, input
 	return item, nil
 }
 func (r *Repository) List(ctx context.Context, organizationID uuid.UUID) ([]Product, error) {
-	rows, err := r.pool.Query(ctx, `SELECT `+productColumns+` FROM products WHERE organization_id=$1 ORDER BY name, sku`, organizationID)
+	rows, err := r.pool.Query(ctx, `SELECT `+productColumns+` FROM products WHERE organization_id=$1 ORDER BY name,sku,id LIMIT $2`, organizationID, pagination.MaxLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list products: %w", err)
 	}

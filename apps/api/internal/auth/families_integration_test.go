@@ -51,6 +51,102 @@ func familySession(user uuid.UUID) Session {
 	return Session{ID: uuid.New(), UserID: user, RefreshTokenHash: uuid.NewString(), ExpiresAt: time.Now().Add(time.Hour)}
 }
 
+func TestRefreshReuseRevokesOnlyItsFamily(t *testing.T) {
+	pool := familyPool(t, nil)
+	repo := NewRepository(pool)
+	ctx := context.Background()
+	userID := familyUser(t, pool)
+	otherUserID := familyUser(t, pool)
+	service := NewService(repo, "test-secret", time.Minute, time.Hour)
+	user, err := repo.FindUserByID(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial, err := service.issueTokens(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated, err := service.issueTokens(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := repo.FindUserByID(ctx, otherUserID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign, err := service.issueTokens(ctx, other)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	rotated, err := service.Refresh(ctx, initial.RefreshToken)
+	if err != nil {
+		t.Fatalf("normal refresh failed: %v", err)
+	}
+	if _, err := service.Refresh(ctx, initial.RefreshToken); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("predecessor reuse error=%v", err)
+	}
+	if _, err := service.Refresh(ctx, rotated.RefreshToken); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("descendant survived family revocation: %v", err)
+	}
+	for label, token := range map[string]string{"same-user family": unrelated.RefreshToken, "other-user family": foreign.RefreshToken} {
+		if _, err := service.Refresh(ctx, token); err != nil {
+			t.Fatalf("%s was affected: %v", label, err)
+		}
+	}
+}
+
+func TestConcurrentRefreshReuseContainsFamily(t *testing.T) {
+	pool := familyPool(t, nil)
+	repo := NewRepository(pool)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	userID := familyUser(t, pool)
+	user, err := repo.FindUserByID(ctx, userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service := NewService(repo, "test-secret", time.Minute, time.Hour)
+	initial, err := service.issueTokens(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unrelated, err := service.issueTokens(ctx, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const requests = 2
+	var wait sync.WaitGroup
+	results := make(chan error, requests)
+	for range requests {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			_, refreshErr := service.Refresh(ctx, initial.RefreshToken)
+			results <- refreshErr
+		}()
+	}
+	wait.Wait()
+	close(results)
+	successes := 0
+	for err := range results {
+		if err == nil {
+			successes++
+		} else if !errors.Is(err, ErrInvalidCredentials) {
+			t.Fatalf("unexpected concurrent refresh error: %v", err)
+		}
+	}
+	if successes > 1 {
+		t.Fatalf("concurrent predecessor refreshes succeeded %d times", successes)
+	}
+	if _, err := service.Refresh(ctx, initial.RefreshToken); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("reused predecessor accepted after race: %v", err)
+	}
+	if _, err := service.Refresh(ctx, unrelated.RefreshToken); err != nil {
+		t.Fatalf("unrelated family was revoked: %v", err)
+	}
+}
+
 func TestSessionFamiliesCreationIsolationAndDescendants(t *testing.T) {
 	pool := familyPool(t, nil)
 	repo := NewRepository(pool)

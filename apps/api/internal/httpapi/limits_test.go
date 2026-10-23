@@ -93,7 +93,16 @@ func TestExpensiveRoutesShareUserBudgetAndReadsRemainAvailable(t *testing.T) {
 	}
 	prefix := "/api/v1/organizations/" + org.String()
 	id := uuid.NewString()
-	paths := []string{"/orders", "/orders/auto-allocate", "/orders/" + id + "/payments", "/orders/" + id + "/checkout", "/inventory/" + id + "/adjust", "/transfers", "/transfers/" + id + "/dispatch", "/transfers/" + id + "/receive"}
+	type route struct{ method, path string }
+	routes := []route{
+		{"PATCH", ""}, {"POST", "/members"}, {"PATCH", "/members/" + uuid.NewString()}, {"DELETE", "/members/" + uuid.NewString()},
+		{"POST", "/products"}, {"PATCH", "/products/" + id}, {"POST", "/warehouses"}, {"PATCH", "/warehouses/" + id},
+		{"POST", "/inventory"}, {"PATCH", "/inventory/" + id + "/replenishment-policy"}, {"POST", "/inventory/" + id + "/adjust"},
+		{"POST", "/inventory/" + id + "/reservations"}, {"POST", "/reservations/" + id + "/release"},
+		{"POST", "/transfers"}, {"POST", "/transfers/" + id + "/dispatch"}, {"POST", "/transfers/" + id + "/receive"}, {"POST", "/transfers/" + id + "/cancel"},
+		{"POST", "/orders"}, {"POST", "/orders/auto-allocate"}, {"POST", "/orders/" + id + "/cancel"},
+		{"POST", "/orders/" + id + "/fulfillments"}, {"POST", "/orders/" + id + "/payments"}, {"POST", "/orders/" + id + "/checkout"},
+	}
 	call := func(method, path, token string) *httptest.ResponseRecorder {
 		r := httptest.NewRequest(method, prefix+path, strings.NewReader(`{}`))
 		r.Header.Set("Content-Type", "application/json")
@@ -104,15 +113,16 @@ func TestExpensiveRoutesShareUserBudgetAndReadsRemainAvailable(t *testing.T) {
 	}
 	token := userToken(t, a)
 	for i := 0; i < 30; i++ {
-		w := call("POST", paths[i%len(paths)], token)
+		route := routes[i%len(routes)]
+		w := call(route.method, route.path, token)
 		if w.Code == 429 || w.Code == 500 {
 			t.Fatalf("unexpected under-limit response: %d %s", w.Code, w.Body)
 		}
 	}
-	for _, path := range paths {
-		w := call("POST", path, token)
-		if w.Code != 429 || w.Header().Get("Retry-After") == "" {
-			t.Fatalf("unlimited route %s: %d", path, w.Code)
+	for _, route := range routes {
+		w := call(route.method, route.path, token)
+		if w.Code != 429 || w.Header().Get("Retry-After") == "" || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("unlimited route %s %s: %d headers=%v", route.method, route.path, w.Code, w.Header())
 		}
 	}
 	if w := call("GET", "", token); w.Code != 200 {

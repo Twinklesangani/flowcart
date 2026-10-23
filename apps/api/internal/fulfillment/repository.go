@@ -8,6 +8,8 @@ import (
 
 	"flowcart/apps/api/internal/audit"
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -313,14 +315,17 @@ func loadFulfillmentTx(ctx context.Context, tx pgx.Tx, item Fulfillment) (Fulfil
 	return item, nil
 }
 
-func (r *Repository) List(ctx context.Context, organizationID, orderID uuid.UUID) ([]Fulfillment, error) {
+func (r *Repository) List(ctx context.Context, organizationID, orderID uuid.UUID, limit int) ([]Fulfillment, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
 	var existingOrder uuid.UUID
 	if err := r.pool.QueryRow(ctx, `SELECT id FROM orders WHERE organization_id=$1 AND id=$2`, organizationID, orderID).Scan(&existingOrder); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrOrderNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("find fulfillment order: %w", err)
 	}
-	rows, err := r.pool.Query(ctx, `SELECT `+fulfillmentColumns+` FROM fulfillments f JOIN warehouses w ON w.organization_id=f.organization_id AND w.id=f.warehouse_id WHERE f.organization_id=$1 AND f.order_id=$2 ORDER BY f.created_at,f.id`, organizationID, orderID)
+	rows, err := r.pool.Query(ctx, `SELECT `+fulfillmentColumns+` FROM fulfillments f JOIN warehouses w ON w.organization_id=f.organization_id AND w.id=f.warehouse_id WHERE f.organization_id=$1 AND f.order_id=$2 ORDER BY f.created_at,f.id LIMIT $3`, organizationID, orderID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list fulfillments: %w", err)
 	}
@@ -381,6 +386,9 @@ func (r *Repository) loadFulfillmentItems(ctx context.Context, items []Fulfillme
 }
 
 func (r *Repository) ListMovements(ctx context.Context, organizationID, inventoryID uuid.UUID, limit int) ([]InventoryMovement, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
 	var existingInventory uuid.UUID
 	if err := r.pool.QueryRow(ctx, `SELECT id FROM inventory_levels WHERE organization_id=$1 AND id=$2`, organizationID, inventoryID).Scan(&existingInventory); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNotFound

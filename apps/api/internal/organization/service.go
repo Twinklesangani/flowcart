@@ -3,17 +3,19 @@ package organization
 import (
 	"context"
 	"errors"
-	"github.com/google/uuid"
+	"flowcart/apps/api/internal/pagination"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 type repository interface {
 	CreateWithOwner(context.Context, Organization, uuid.UUID) (Organization, error)
 	FindMembership(context.Context, uuid.UUID, uuid.UUID) (OrganizationMembership, error)
-	ListForUser(context.Context, uuid.UUID) ([]OrganizationSummary, error)
+	ListForUser(context.Context, uuid.UUID, int) ([]OrganizationSummary, error)
 	Find(context.Context, uuid.UUID) (Organization, error)
 	Update(context.Context, uuid.UUID, string, string) (Organization, error)
-	ListMembers(context.Context, uuid.UUID) ([]Member, error)
+	ListMembers(context.Context, uuid.UUID, int) ([]Member, error)
 	FindUserByEmail(context.Context, string) (uuid.UUID, error)
 	AddMember(context.Context, uuid.UUID, uuid.UUID, Role) error
 	ChangeRole(context.Context, uuid.UUID, uuid.UUID, Role) error
@@ -33,8 +35,11 @@ func (s *Service) Create(ctx context.Context, userID uuid.UUID, name, slug strin
 	}
 	return s.repository.CreateWithOwner(ctx, Organization{ID: uuid.New(), Name: name, Slug: slug}, userID)
 }
-func (s *Service) List(ctx context.Context, userID uuid.UUID) ([]OrganizationSummary, error) {
-	return s.repository.ListForUser(ctx, userID)
+func (s *Service) List(ctx context.Context, userID uuid.UUID, limit int) ([]OrganizationSummary, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
+	return s.repository.ListForUser(ctx, userID, limit)
 }
 func (s *Service) Membership(ctx context.Context, organizationID, userID uuid.UUID) (OrganizationMembership, error) {
 	return s.repository.FindMembership(ctx, organizationID, userID)
@@ -66,14 +71,17 @@ func (s *Service) Update(ctx context.Context, userID, organizationID uuid.UUID, 
 	}
 	return s.repository.Update(ctx, organizationID, name, slug)
 }
-func (s *Service) Members(ctx context.Context, userID, organizationID uuid.UUID) ([]Member, error) {
+func (s *Service) Members(ctx context.Context, userID, organizationID uuid.UUID, limit int) ([]Member, error) {
 	if _, err := s.repository.FindMembership(ctx, organizationID, userID); err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, ErrNotFound
 		}
 		return nil, err
 	}
-	return s.repository.ListMembers(ctx, organizationID)
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
+	return s.repository.ListMembers(ctx, organizationID, limit)
 }
 func (s *Service) AddMember(ctx context.Context, userID, organizationID uuid.UUID, email string, role Role) error {
 	if !validRole(role) {

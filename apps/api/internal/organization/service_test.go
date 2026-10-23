@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 )
 
@@ -42,7 +44,7 @@ func (r *fakeRepository) FindMembership(_ context.Context, organizationID, userI
 	}
 	return membership, nil
 }
-func (r *fakeRepository) ListForUser(_ context.Context, userID uuid.UUID) ([]OrganizationSummary, error) {
+func (r *fakeRepository) ListForUser(_ context.Context, userID uuid.UUID, _ int) ([]OrganizationSummary, error) {
 	if r.listError != nil {
 		return nil, r.listError
 	}
@@ -84,7 +86,7 @@ func (r *fakeRepository) Update(_ context.Context, id uuid.UUID, name, slug stri
 	r.updated = true
 	return Organization{ID: id, Name: name, Slug: slug}, nil
 }
-func (r *fakeRepository) ListMembers(_ context.Context, id uuid.UUID) ([]Member, error) {
+func (r *fakeRepository) ListMembers(_ context.Context, id uuid.UUID, _ int) ([]Member, error) {
 	result := make([]Member, 0)
 	for key, membership := range r.memberships {
 		if key[0] == id {
@@ -156,7 +158,7 @@ func TestTenantIsolationListsOnlyMembershipsAndRejectsNonMember(t *testing.T) {
 	repository.organizations = []Organization{organizationA, organizationB}
 	repository.memberships[[2]uuid.UUID{organizationA.ID, userA}] = OrganizationMembership{OrganizationID: organizationA.ID, UserID: userA, Role: RoleOwner}
 	repository.memberships[[2]uuid.UUID{organizationB.ID, userB}] = OrganizationMembership{OrganizationID: organizationB.ID, UserID: userB, Role: RoleOwner}
-	organizations, err := service.List(context.Background(), userA)
+	organizations, err := service.List(context.Background(), userA, pagination.DefaultLimit)
 	if err != nil || len(organizations) != 1 || organizations[0].ID != organizationA.ID {
 		t.Fatalf("user A organizations = %+v, err = %v", organizations, err)
 	}
@@ -186,7 +188,10 @@ func TestMembershipRepositoryErrorsArePreserved(t *testing.T) {
 			_, err := service.Update(context.Background(), userID, organizationID, "Company", "company")
 			return err
 		}},
-		{"members", func() error { _, err := service.Members(context.Background(), userID, organizationID); return err }},
+		{"members", func() error {
+			_, err := service.Members(context.Background(), userID, organizationID, pagination.DefaultLimit)
+			return err
+		}},
 		{"add member", func() error {
 			return service.AddMember(context.Background(), userID, organizationID, "user@example.com", RoleViewer)
 		}},

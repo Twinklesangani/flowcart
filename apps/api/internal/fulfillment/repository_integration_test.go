@@ -11,9 +11,10 @@ import (
 	"flowcart/apps/api/internal/inventory"
 	"flowcart/apps/api/internal/order"
 	"flowcart/apps/api/internal/organization"
+	"os"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"os"
 )
 
 type fulfillmentFixture struct{ org, user, product, warehouse, inventory uuid.UUID }
@@ -216,7 +217,7 @@ func TestFulfillmentValidationAndTenantIsolation(t *testing.T) {
 	if _, err := service.Complete(ctx, tenant(fixture), created.ID, "second", fulfillment.CreateInput{ReservationIDs: []uuid.UUID{reservationID}}); !errors.Is(err, fulfillment.ErrOrderAlreadyFulfilled) && !errors.Is(err, fulfillment.ErrReservationAlreadyConsumed) {
 		t.Fatalf("consumed input=%v", err)
 	}
-	if _, err := service.List(ctx, tenant(other), created.ID); !errors.Is(err, fulfillment.ErrOrderNotFound) {
+	if _, err := service.List(ctx, tenant(other), created.ID, 50); !errors.Is(err, fulfillment.ErrOrderNotFound) {
 		t.Fatalf("foreign list=%v", err)
 	}
 	if _, err := service.Movements(ctx, tenant(other), fixture.inventory, 50); !errors.Is(err, fulfillment.ErrNotFound) {

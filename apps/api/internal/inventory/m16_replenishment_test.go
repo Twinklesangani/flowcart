@@ -3,9 +3,11 @@ package inventory
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
 
 	"github.com/google/uuid"
 )
@@ -85,6 +87,32 @@ func TestReplenishmentDonorLimitPlusOneIsTruncated(t *testing.T) {
 	result := applyRecommendations([]LowStockItem{destination}, donors, false)[0]
 	if !result.DonorsTruncated {
 		t.Fatal("limit-plus-one donor result was not marked truncated")
+	}
+}
+
+func TestLowStockCursorIsBoundedAndTenantScoped(t *testing.T) {
+	organizationID := uuid.New()
+	cursor := lowStockCursor{Priority: 1, Available: 5, ID: uuid.New()}
+	encoded := encodeLowStockCursor(organizationID, cursor)
+	decoded, err := decodeLowStockCursor(encoded, organizationID)
+	if err != nil || decoded.ID != cursor.ID {
+		t.Fatalf("decoded cursor=%+v err=%v", decoded, err)
+	}
+	for _, tc := range []struct {
+		name  string
+		raw   string
+		orgID uuid.UUID
+	}{
+		{name: "cross tenant", raw: encoded, orgID: uuid.New()},
+		{name: "empty record", raw: encodeLowStockCursor(organizationID, lowStockCursor{Priority: 1, Available: 5}), orgID: organizationID},
+		{name: "negative availability", raw: encodeLowStockCursor(organizationID, lowStockCursor{Priority: 1, Available: -1, ID: uuid.New()}), orgID: organizationID},
+		{name: "oversized token", raw: strings.Repeat("a", pagination.MaxCursorLength+1), orgID: organizationID},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := decodeLowStockCursor(tc.raw, tc.orgID); err == nil {
+				t.Fatal("invalid cursor accepted")
+			}
+		})
 	}
 }
 

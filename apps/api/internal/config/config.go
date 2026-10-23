@@ -72,6 +72,9 @@ func Load() (Config, error) {
 		return Config{}, errors.New("PAYMENTS_PROVIDER must be disabled or stripe")
 	}
 	if paymentsProvider == "stripe" {
+		if appEnv == "production" && os.Getenv("STRIPE_EXPECTED_LIVEMODE") != "true" {
+			return Config{}, errors.New("STRIPE_EXPECTED_LIVEMODE must be true when Stripe payments are enabled in production")
+		}
 		if strings.TrimSpace(os.Getenv("STRIPE_SECRET_KEY")) == "" || strings.TrimSpace(os.Getenv("STRIPE_WEBHOOK_SECRET")) == "" {
 			return Config{}, errors.New("STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET are required when PAYMENTS_PROVIDER=stripe")
 		}

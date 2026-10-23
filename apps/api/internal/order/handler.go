@@ -56,18 +56,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, err := pagination.ParseLimit(r.URL.Query().Get("limit"))
+	limit, cursor, err := pagination.ParseQuery(r.URL.Query(), tenant.OrganizationID)
 	if err != nil {
 		writeErrorFromDomain(w, ErrInvalidInput)
 		return
-	}
-	var cursor pagination.Cursor
-	if raw := r.URL.Query().Get("cursor"); raw != "" {
-		cursor, err = pagination.DecodeCursor(raw, tenant.OrganizationID)
-		if err != nil {
-			writeErrorFromDomain(w, ErrInvalidInput)
-			return
-		}
 	}
 	page, err := h.service.List(r.Context(), tenant, limit, cursor, r.URL.Query().Get("status"), r.URL.Query().Get("search"))
 	if err != nil {

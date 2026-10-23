@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 )
 
@@ -25,12 +27,15 @@ func decodeLowStockCursor(raw string, organizationID uuid.UUID) (lowStockCursor,
 	if raw == "" {
 		return lowStockCursor{}, nil
 	}
+	if len(raw) > pagination.MaxCursorLength {
+		return lowStockCursor{}, errors.New("invalid low-stock cursor")
+	}
 	payload, err := base64.RawURLEncoding.DecodeString(raw)
 	if err != nil {
 		return lowStockCursor{}, errors.New("invalid low-stock cursor")
 	}
 	var cursor lowStockCursor
-	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.OrganizationID != organizationID || cursor.ID == uuid.Nil || (cursor.Priority != 0 && cursor.Priority != 1) {
+	if err := json.Unmarshal(payload, &cursor); err != nil || cursor.OrganizationID != organizationID || cursor.ID == uuid.Nil || cursor.Available < 0 || (cursor.Priority != 0 && cursor.Priority != 1) {
 		return lowStockCursor{}, errors.New("invalid low-stock cursor")
 	}
 	return cursor, nil

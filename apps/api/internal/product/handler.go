@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"flowcart/apps/api/internal/organization"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -39,18 +40,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized", "Authentication is required.")
 		return
 	}
-	limit, err := pagination.ParseLimit(r.URL.Query().Get("limit"))
+	limit, cursor, err := pagination.ParseQuery(r.URL.Query(), tenant.OrganizationID)
 	if err != nil {
 		writeErrorFromDomain(w, ErrInvalidInput)
 		return
-	}
-	var cursor pagination.Cursor
-	if raw := r.URL.Query().Get("cursor"); raw != "" {
-		cursor, err = pagination.DecodeCursor(raw, tenant.OrganizationID)
-		if err != nil {
-			writeErrorFromDomain(w, ErrInvalidInput)
-			return
-		}
 	}
 	page, err := h.service.ListPage(r.Context(), tenant, limit, cursor)
 	if err != nil {

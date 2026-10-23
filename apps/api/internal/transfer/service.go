@@ -12,6 +12,7 @@ import (
 	"flowcart/apps/api/internal/audit"
 	"flowcart/apps/api/internal/organization"
 	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 )
 
@@ -65,7 +66,7 @@ func (s *Service) List(ctx context.Context, tenant organization.TenantContext, l
 	if limit == 0 {
 		limit = 50
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > pagination.MaxLimit {
 		return nil, ErrInvalidInput
 	}
 	return s.repository.List(ctx, tenant.OrganizationID, limit)
@@ -75,7 +76,7 @@ func (s *Service) ListPage(ctx context.Context, tenant organization.TenantContex
 	if limit == 0 {
 		limit = pagination.DefaultLimit
 	}
-	if limit < 1 || limit > pagination.MaxLimit {
+	if limit < 1 || limit > pagination.MaxLimit || len(status) > pagination.MaxQueryValueLength {
 		return ListPage{}, ErrInvalidInput
 	}
 	if repository, ok := s.repository.(interface {

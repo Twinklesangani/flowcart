@@ -77,8 +77,14 @@ func (service *Service) Refresh(ctx context.Context, refreshToken string) (AuthR
 	if refreshToken == "" {
 		return AuthResult{}, ErrInvalidCredentials
 	}
-	session, err := service.repository.FindActiveSession(ctx, hashRefreshToken(refreshToken))
+	tokenHash := hashRefreshToken(refreshToken)
+	session, err := service.repository.FindActiveSession(ctx, tokenHash)
 	if errors.Is(err, ErrNotFound) {
+		// A known predecessor, expired token, or token from an already-revoked
+		// family must contain any still-active descendants of that family.
+		if revokeErr := service.repository.RevokeSession(ctx, tokenHash); revokeErr != nil {
+			return AuthResult{}, fmt.Errorf("contain reused refresh session: %w", revokeErr)
+		}
 		return AuthResult{}, ErrInvalidCredentials
 	}
 	if err != nil {
@@ -126,6 +132,9 @@ func (service *Service) rotateTokens(ctx context.Context, oldSession Session, us
 	replacement := Session{ID: uuid.New(), UserID: user.ID, RefreshTokenHash: hashRefreshToken(refreshToken), ExpiresAt: expiresAt}
 	if err := service.repository.RotateSession(ctx, oldSession.ID, replacement); err != nil {
 		if errors.Is(err, ErrNotFound) {
+			if revokeErr := service.repository.RevokeSession(ctx, oldSession.RefreshTokenHash); revokeErr != nil {
+				return AuthResult{}, fmt.Errorf("contain concurrent refresh reuse: %w", revokeErr)
+			}
 			return AuthResult{}, ErrInvalidCredentials
 		}
 		return AuthResult{}, fmt.Errorf("rotate refresh session: %w", err)

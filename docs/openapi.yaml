@@ -6,6 +6,8 @@ info:
     Tenant-scoped REST API for FlowCart OS. Access tokens use the Bearer
     scheme. Organization routes require membership in the organization named
     by organizationID. Mutation endpoints use Idempotency-Key where noted.
+    Collection limits default to 50 and reject values outside 1 through 100.
+    Order, auto-order, transfer, and fulfillment batches accept at most 100 items.
 servers:
   - url: http://localhost:8081
     description: Local development
@@ -81,6 +83,7 @@ paths:
     get:
       tags: [Organizations]
       security: [{ bearerAuth: [] }]
+      parameters: [{ $ref: "#/components/parameters/Limit" }]
       responses:
         "200": { description: Organizations visible to the user }
     post:
@@ -90,6 +93,25 @@ paths:
       responses:
         "201": { description: Organization created }
         "400": { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{organizationID}/members:
+    parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
+    get:
+      tags: [Organizations]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          { $ref: "#/components/parameters/Limit" },
+        ]
+      responses:
+        {
+          "200":
+            {
+              description: "Members visible to the authenticated member, capped at 100",
+            },
+          "400": { $ref: "#/components/responses/Error" },
+          "403": { $ref: "#/components/responses/Error" },
+        }
   /api/v1/organizations/{organizationID}/products:
     parameters: [{ $ref: "#/components/parameters/OrganizationID" }]
     get:
@@ -206,8 +228,8 @@ paths:
           { $ref: "#/components/parameters/OrganizationID" },
           { $ref: "#/components/parameters/Cursor" },
           { $ref: "#/components/parameters/Limit" },
-          { name: status, in: query, schema: { type: string } },
-          { name: search, in: query, schema: { type: string } },
+          { name: status, in: query, schema: { type: string, maxLength: 256 } },
+          { name: search, in: query, schema: { type: string, maxLength: 256 } },
         ]
       responses:
         {
@@ -267,6 +289,7 @@ paths:
         [
           { $ref: "#/components/parameters/OrganizationID" },
           { $ref: "#/components/parameters/OrderID" },
+          { $ref: "#/components/parameters/Limit" },
         ]
       responses:
         {
@@ -295,6 +318,7 @@ paths:
         [
           { $ref: "#/components/parameters/OrganizationID" },
           { $ref: "#/components/parameters/OrderID" },
+          { $ref: "#/components/parameters/Limit" },
         ]
       responses:
         {
@@ -310,9 +334,11 @@ paths:
           { $ref: "#/components/parameters/OrderID" },
           { $ref: "#/components/parameters/IdempotencyKey" },
         ]
+      requestBody: { $ref: "#/components/requestBodies/Fulfillment" }
       responses:
         {
           "201": { description: Fulfillment created },
+          "400": { $ref: "#/components/responses/Error" },
           "409": { $ref: "#/components/responses/Error" },
         }
   /api/v1/organizations/{organizationID}/transfers:
@@ -324,7 +350,7 @@ paths:
           { $ref: "#/components/parameters/OrganizationID" },
           { $ref: "#/components/parameters/Cursor" },
           { $ref: "#/components/parameters/Limit" },
-          { name: status, in: query, schema: { type: string } },
+          { name: status, in: query, schema: { type: string, maxLength: 256 } },
         ]
       responses: { "200": { $ref: "#/components/responses/Page" } }
     post:
@@ -340,6 +366,27 @@ paths:
         {
           "201": { description: Transfer created },
           "409": { $ref: "#/components/responses/Error" },
+        }
+  /api/v1/organizations/{organizationID}/inventory/{inventoryID}/movements:
+    get:
+      tags: [Inventory]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        [
+          { $ref: "#/components/parameters/OrganizationID" },
+          {
+            name: inventoryID,
+            in: path,
+            required: true,
+            schema: { type: string, format: uuid },
+          },
+          { $ref: "#/components/parameters/Limit" },
+        ]
+      responses:
+        {
+          "200": { description: "Recent inventory movements, capped at 100" },
+          "400": { $ref: "#/components/responses/Error" },
+          "404": { $ref: "#/components/responses/Error" },
         }
   /api/v1/organizations/{organizationID}/transfers/{transferID}/dispatch:
     post:
@@ -380,8 +427,16 @@ paths:
           { $ref: "#/components/parameters/OrganizationID" },
           { $ref: "#/components/parameters/Cursor" },
           { $ref: "#/components/parameters/Limit" },
-          { name: event_type, in: query, schema: { type: string } },
-          { name: resource_type, in: query, schema: { type: string } },
+          {
+            name: event_type,
+            in: query,
+            schema: { type: string, maxLength: 256 },
+          },
+          {
+            name: resource_type,
+            in: query,
+            schema: { type: string, maxLength: 256 },
+          },
         ]
       responses:
         {
@@ -417,7 +472,7 @@ components:
       {
         name: cursor,
         in: query,
-        schema: { type: string },
+        schema: { type: string, maxLength: 256 },
         description: Opaque tenant-bound cursor,
       }
     Limit:
@@ -425,6 +480,7 @@ components:
         name: limit,
         in: query,
         schema: { type: integer, minimum: 1, maximum: 100, default: 50 },
+        description: Omitted limits default to 50; values outside 1 through 100 are rejected.,
       }
     IdempotencyKey:
       {
@@ -575,6 +631,7 @@ components:
                         items:
                           {
                             type: array,
+                            maxItems: 100,
                             items:
                               {
                                 type: object,
@@ -608,6 +665,7 @@ components:
                         items:
                           {
                             type: array,
+                            maxItems: 100,
                             items:
                               {
                                 type: object,
@@ -644,6 +702,7 @@ components:
                         items:
                           {
                             type: array,
+                            maxItems: 100,
                             items:
                               {
                                 type: object,
@@ -654,6 +713,30 @@ components:
                                     quantity: { type: integer, minimum: 1 },
                                   },
                               },
+                          },
+                      },
+                  },
+              },
+          },
+      }
+    Fulfillment:
+      {
+        required: true,
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    type: object,
+                    required: [reservation_ids],
+                    properties:
+                      {
+                        reservation_ids:
+                          {
+                            type: array,
+                            maxItems: 100,
+                            items: { type: string, format: uuid },
                           },
                       },
                   },

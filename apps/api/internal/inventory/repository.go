@@ -101,7 +101,7 @@ func (r *Repository) List(ctx context.Context, organizationID uuid.UUID) ([]Inve
 	rows, err := r.pool.Query(ctx, `SELECT `+inventoryColumns+` FROM inventory_levels i
 		JOIN products p ON p.id=i.product_id AND p.organization_id=i.organization_id
 		JOIN warehouses w ON w.id=i.warehouse_id AND w.organization_id=i.organization_id
-		WHERE i.organization_id=$1 ORDER BY p.name, w.name`, organizationID)
+		WHERE i.organization_id=$1 ORDER BY p.name,w.name,i.id LIMIT $2`, organizationID, pagination.MaxLimit)
 	if err != nil {
 		return nil, fmt.Errorf("list inventory: %w", err)
 	}

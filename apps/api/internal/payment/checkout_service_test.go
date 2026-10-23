@@ -292,6 +292,36 @@ func TestCheckoutCancellationUncertaintyAndWebhookHTTP(t *testing.T) {
 	}
 }
 
+func TestWebhookModeMustMatchConfiguredStripeMode(t *testing.T) {
+	for _, tc := range []struct {
+		name                               string
+		eventLive, configuredLive, wantErr bool
+	}{
+		{"test mode preserved", false, false, false},
+		{"test event rejected in live mode", false, true, true},
+		{"live event accepted", true, true, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &fakeCheckoutRepository{}
+			provider := &fakeProvider{webhook: VerifiedEvent{ID: "evt_mode", Type: "payment_intent.succeeded", Provider: "stripe", IntentID: "pi_live", PayloadHash: strings.Repeat("b", 64), Livemode: tc.eventLive}}
+			err := NewCheckoutService(repo, provider, tc.configuredLive).Receive(context.Background(), []byte(`{"id":"evt_mode"}`), "verified-signature")
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("Receive error=%v", err)
+			}
+			if tc.wantErr && !errors.Is(err, ErrInvalidWebhook) {
+				t.Fatalf("error=%v", err)
+			}
+			wantAccepted := 1
+			if tc.wantErr {
+				wantAccepted = 0
+			}
+			if len(repo.accepted) != wantAccepted {
+				t.Fatalf("accepted=%d want=%d", len(repo.accepted), wantAccepted)
+			}
+		})
+	}
+}
+
 func TestCheckoutRunStartsOnceAndStopsOnCancellation(t *testing.T) {
 	repo := &fakeCheckoutRepository{processCalled: make(chan struct{}, 2)}
 	service := NewCheckoutService(repo, &fakeProvider{}, false)

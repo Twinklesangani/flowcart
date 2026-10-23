@@ -4,14 +4,19 @@ import pg from "pg";
 const apiURL = process.env.API_URL ?? (process.env.API_MODE === "proxy" ? "" : "http://127.0.0.1:8081");
 const ownerEmail = "owner@flowcart.demo";
 const viewerEmail = "viewer@flowcart.demo";
-const password = "FlowCart-Demo-Only-2026!";
+const hosted = process.env.FLOWCART_HOSTED_TEST === "1";
+const ownerPassword = process.env.FLOWCART_SEED_OWNER_PASSWORD ?? (hosted ? "" : "FlowCart-Demo-Only-2026!");
+const viewerPassword = process.env.FLOWCART_SEED_VIEWER_PASSWORD ?? (hosted ? "" : "FlowCart-Demo-Only-2026!");
+if (hosted && (!ownerPassword || !viewerPassword)) {
+  throw new Error("Hosted tests require private owner and viewer passwords through environment variables.");
+}
 
 type APIResult<T> = { status: number; body: T };
 
 async function login(page: Page, email: string) {
   await page.goto("/");
   await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password").fill(email === ownerEmail ? ownerPassword : viewerPassword);
   await page.locator("form").getByRole("button", { name: "Sign in" }).click();
   await expect(page).toHaveURL(/dashboard/);
 }
@@ -33,7 +38,7 @@ async function ownerContext(page: Page) {
   const responsePromise = page.waitForResponse((response) => response.url().endsWith("/api/v1/auth/login"));
   await page.goto("/");
   await page.getByLabel("Email").fill(ownerEmail);
-  await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Password").fill(ownerPassword);
   await page.locator("form").getByRole("button", { name: "Sign in" }).click();
   const loginBody = await (await responsePromise).json() as { access_token: string };
   await expect(page).toHaveURL(/dashboard/);

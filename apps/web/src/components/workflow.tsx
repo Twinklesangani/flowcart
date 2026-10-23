@@ -36,11 +36,10 @@ export function TransfersView() {
   const [error, setError] = useState<unknown>(null);
   const generation = useRef(0);
   const loadingMoreRef = useRef(false);
-  const [pageState, setPageState] = useState({ nextCursor: "", hasMore: false });
   const load = useCallback(async (cursor = "", append = false, requestGeneration = generation.current) => {
     if (!organization || !isCurrentGeneration(requestGeneration, generation.current)) return;
     if (append) {
-      if (loadingMoreRef.current || !pageState.nextCursor || !pageState.hasMore) return;
+      if (loadingMoreRef.current || !cursor) return;
       loadingMoreRef.current = true;
       setLoadingMore(true);
     } else {
@@ -57,7 +56,6 @@ export function TransfersView() {
       const result = await client.request<import("../lib/api").TransferPage>(`/api/v1/organizations/${organization.id}/transfers?${params}`);
       if (!isCurrentGeneration(requestGeneration, generation.current)) return;
       setTransfers((current) => append ? appendUnique(current, result.transfers) : result.transfers);
-      setPageState({ nextCursor: result.next_cursor ?? "", hasMore: result.has_more });
       setNextCursor(result.next_cursor ?? "");
       setHasMore(result.has_more);
       setError(null);
@@ -72,8 +70,15 @@ export function TransfersView() {
         setLoadingMore(false);
       }
     }
-  }, [client, organization, pageState, status]);
-  useEffect(() => { const requestGeneration = ++generation.current; loadingMoreRef.current = false; const timer = window.setTimeout(() => { void load("", false, requestGeneration); }, 0); return () => window.clearTimeout(timer); }, [load]);
+  }, [client, organization, status]);
+  useEffect(() => {
+    const requestGeneration = ++generation.current;
+    loadingMoreRef.current = false;
+    // Schedule the initial async load after the effect; cleanup invalidates both
+    // queued loads and responses from an old filter, tenant or unmounted view.
+    queueMicrotask(() => { void load("", false, requestGeneration); });
+    return () => { generation.current = requestGeneration + 1; };
+  }, [load]);
   if (state === "loading") return <><WorkflowHeading title="Transfers" description="Move stock between warehouses with an auditable operational handoff." /><LoadingState label="Loading transfers" /></>;
   if (state === "error") return <><WorkflowHeading title="Transfers" description="Move stock between warehouses with an auditable operational handoff." />{apiStatus(error) === 403 ? <PermissionDeniedState /> : <ErrorState onRetry={() => void load()} />}</>;
   const visible = transfers.filter((item) => status === "all" || item.status === status);

@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 )
 
@@ -17,8 +19,17 @@ func (r *fakeRepository) Create(context.Context, uuid.UUID, uuid.UUID, uuid.UUID
 	}
 	return Payment{ID: uuid.New(), Status: StatusPending}, nil
 }
-func (r *fakeRepository) List(context.Context, uuid.UUID, uuid.UUID) ([]Payment, error) {
+func (r *fakeRepository) ListLimited(context.Context, uuid.UUID, uuid.UUID, int) ([]Payment, error) {
 	return nil, nil
+}
+
+func TestPaymentListRejectsInvalidBounds(t *testing.T) {
+	service := NewService(&fakeRepository{})
+	for _, limit := range []int{0, -1, pagination.MaxLimit + 1} {
+		if _, err := service.List(context.Background(), tenant(organization.RoleOwner), uuid.New(), limit); !errors.Is(err, ErrInvalidInput) {
+			t.Fatalf("limit %d error = %v", limit, err)
+		}
+	}
 }
 func (r *fakeRepository) Get(context.Context, uuid.UUID, uuid.UUID) (Payment, error) {
 	return Payment{}, nil

@@ -151,6 +151,9 @@ func lockWarehouses(ctx context.Context, tx pgx.Tx, organizationID, first, secon
 }
 
 func (r *Repository) List(ctx context.Context, organizationID uuid.UUID, limit int) ([]Transfer, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
 	rows, err := r.pool.Query(ctx, `SELECT `+transferColumns+` FROM inventory_transfers t JOIN warehouses s ON s.organization_id=t.organization_id AND s.id=t.source_warehouse_id JOIN warehouses d ON d.organization_id=t.organization_id AND d.id=t.destination_warehouse_id WHERE t.organization_id=$1 ORDER BY t.created_at DESC,t.id DESC LIMIT $2`, organizationID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list transfers: %w", err)

@@ -36,7 +36,7 @@ func (s *Service) AutoCreate(ctx context.Context, tenant organization.TenantCont
 		return Order{}, ErrForbidden
 	}
 	key = strings.TrimSpace(key)
-	if key == "" || len(key) > 200 || len(input.Items) == 0 || len(input.Items) > 100 {
+	if key == "" || len(key) > 200 || len(input.Items) == 0 || len(input.Items) > pagination.MaxLimit {
 		return Order{}, ErrInvalidInput
 	}
 	items := append([]AutoItemInput(nil), input.Items...)
@@ -89,7 +89,7 @@ func (s *Service) Create(ctx context.Context, tenant organization.TenantContext,
 	return s.repository.Create(ctx, tenant.OrganizationID, tenant.UserID, key, hex.EncodeToString(digest[:]), CreateInput{Items: items})
 }
 func (s *Service) List(ctx context.Context, tenant organization.TenantContext, limit int, cursor pagination.Cursor, status, search string) (ListPage, error) {
-	if limit < 1 || limit > pagination.MaxLimit {
+	if limit < 1 || limit > pagination.MaxLimit || len(status) > pagination.MaxQueryValueLength || len(search) > pagination.MaxQueryValueLength {
 		return ListPage{}, ErrInvalidInput
 	}
 	return s.repository.List(ctx, tenant.OrganizationID, limit, cursor, status, search)

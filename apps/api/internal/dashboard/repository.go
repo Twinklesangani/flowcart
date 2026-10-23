@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -63,7 +65,7 @@ func (r *Repository) Metrics(ctx context.Context, organizationID uuid.UUID) (Met
 			GROUP BY i.warehouse_id
 		) a ON a.warehouse_id=w.id
 		WHERE w.organization_id=$1 AND w.is_active
-		ORDER BY w.name,w.id`, organizationID)
+		ORDER BY w.name,w.id LIMIT $2`, organizationID, pagination.MaxLimit)
 	if err != nil {
 		return Metrics{}, fmt.Errorf("dashboard warehouse metrics: %w", err)
 	}

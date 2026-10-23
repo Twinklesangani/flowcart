@@ -3,9 +3,9 @@ package audit
 import (
 	"encoding/json"
 	"net/http"
-	"strconv"
 
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
 )
 
 type Handler struct{ reader *Reader }
@@ -22,16 +22,18 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusForbidden, "forbidden", "You do not have permission to view the audit log.")
 		return
 	}
-	limit := 50
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			writeError(w, http.StatusBadRequest, "invalid_request", "The audit limit is invalid.")
-			return
-		}
-		limit = parsed
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "The audit query is invalid.")
+		return
 	}
-	page, err := h.reader.OrganizationEvents(r.Context(), tenant.OrganizationID, Filter{Limit: limit, Cursor: r.URL.Query().Get("cursor"), EventType: r.URL.Query().Get("event_type"), ResourceType: r.URL.Query().Get("resource_type")})
+	cursor, present, err := pagination.SingleValue(query, "cursor")
+	if err != nil || (present && cursor == "") {
+		writeError(w, http.StatusBadRequest, "invalid_request", "The audit query is invalid.")
+		return
+	}
+	page, err := h.reader.OrganizationEvents(r.Context(), tenant.OrganizationID, Filter{Limit: limit, Cursor: cursor, EventType: query.Get("event_type"), ResourceType: query.Get("resource_type")})
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid_request", "The audit query is invalid.")
 		return

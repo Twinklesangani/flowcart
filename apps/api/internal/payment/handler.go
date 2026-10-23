@@ -6,6 +6,8 @@ import (
 	"net/http"
 
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -90,7 +92,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeErrorFromDomain(w, ErrOrderNotFound)
 		return
 	}
-	payments, err := h.service.List(r.Context(), tenant, orderID)
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
+		return
+	}
+	if _, present, queryErr := pagination.SingleValue(query, "cursor"); queryErr != nil || present {
+		writeError(w, http.StatusBadRequest, "invalid_request", "Request data is invalid.")
+		return
+	}
+	payments, err := h.service.List(r.Context(), tenant, orderID, limit)
 	if err != nil {
 		writeErrorFromDomain(w, err)
 		return

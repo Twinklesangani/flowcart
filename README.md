@@ -99,12 +99,12 @@ If port `8081` is already occupied, choose another local API port and set
 
 ## Demo Seed
 
-The development-only seed creates `FlowCart Demo Retail` with Melbourne,
+The demo seed creates `FlowCart Demo Retail` with Melbourne,
 Sydney, and Brisbane warehouses; 14 products; healthy, low, out-of-stock, and
 unconfigured inventory; orders; payments; fulfillment; transfers; and audit
 history. It is deterministic and safe to rerun for the demo organization.
 
-Demo accounts use the password `FlowCart-Demo-Only-2026!`.
+Local development/test/verification accounts use the password `FlowCart-Demo-Only-2026!`.
 
 | Role              | Email                 |
 | ----------------- | --------------------- |
@@ -114,6 +114,13 @@ Demo accounts use the password `FlowCart-Demo-Only-2026!`.
 
 **DEMO ONLY - NEVER USE IN PRODUCTION.**
 
+Seeding requires explicit development/test/verification mode, confirmation, and
+an allowlisted local database target. Production is rejected before connecting;
+private password variables do not enable production seeding. The isolated Neon
+demo database contains the separately verified sanitized snapshot. Do not seed it.
+See [production security](docs/production-security.md). Hosted owner and manager
+credentials remain private.
+
 The seed is deterministic demo data, not a backup. It does not reproduce
 manually created orders, transfers, or later workflow history. See
 [docs/backup-restore.md](docs/backup-restore.md) for disposable recovery proof.
@@ -121,16 +128,27 @@ manually created orders, transfers, or later workflow history. See
 ## API and deployment
 
 The public API contract is documented in [docs/openapi.yaml](docs/openapi.yaml).
-The current application is not deployed. The provisional design is Cloudflare
-Workers using OpenNext for the Next.js frontend, Render Free for the Go API,
-and Neon Free for PostgreSQL. Static Cloudflare Pages export is not used:
-the App Router contains a dynamic order route and runtime client authentication.
-Hosted browser sessions should use `app.example.com` and `api.example.com`
-under the same registrable domain. The API cookie remains host-only on
-`api.example.com`; exact CORS and the existing Origin checks remain enabled.
-Cloudflare, Render, Neon, a custom domain, DNS, and provider pricing are not
-configured or verified here. AWS is an architectural equivalent only, not a
-platform used by this project.
+The approved demo architecture is OpenNext + Cloudflare Worker for the Next.js
+frontend and same-origin /api proxy, Render Free for the Go API, and Neon Free
+for PostgreSQL. Browser API calls stay on the Worker origin; the Worker forwards
+them to Render and preserves the host-only Secure refresh cookie. Exact HTTPS
+CORS and Origin checks remain required. Static export is not used because the
+App Router includes dynamic routes such as /orders/[orderID].
+
+Current checkpoints:
+
+- Linux OpenNext production build: VERIFIED.
+- Neon demo database: PROVISIONED AND VERIFIED, including sanitized data and auth/RBAC.
+- Render GitHub repository access: AVAILABLE; API service: NOT CREATED / NOT DEPLOYED.
+- Cloudflare frontend: NOT STARTED.
+- Production deployment: NOT ACTIVE.
+
+No production credentials are committed. These checkpoints do not constitute
+security certification or hosted production acceptance. Exact frontend origin,
+provider secrets, TLS, health checks, hosted browser acceptance, recovery/rollback,
+and current pricing/quotas remain deployment gates. Custom domain/DNS configuration
+requires a separate decision; provider domains are the first-demo direction.
+See [deployment plan](docs/deployment-plan.md).
 
 ## Testing
 
@@ -176,8 +194,9 @@ not implemented.
 
 Security hardening includes bounded request bodies, authentication rate
 limiting, production CORS/config validation, secure refresh-cookie settings,
-JWT expiry enforcement, and security headers. Additional deployment hardening
-and security verification remain planned before public hosting.
+JWT expiry enforcement, and security headers. Hosted deployment verification
+remains required before public acceptance; scoped local verification is not
+security certification.
 
 ## More Screenshots
 
@@ -196,10 +215,14 @@ extended stress matrices are not part of every CI run.
 
 ## Roadmap
 
-CI and portfolio packaging are complete. Public deployment is intentionally
-blocked until S4 frontend session isolation, S5 payment reconciliation
-lifecycle, S6 collection/batch limits, S7 membership/email security, and final
-security verification are complete.
+CI and portfolio packaging are complete. S4 — VERIFIED (session isolation and
+refresh-family protection); S5 — VERIFIED (reconciliation lifecycle);
+S6 — VERIFIED (collection/batch limits). S7 — DEFERRED / NOT APPLICABLE to the
+current demo because email-based membership onboarding is not implemented.
+R1 — FIXED (Worker request-body buffering); R2 — FIXED (TransfersView request loop).
+The first demo uses APP_ENV=production and PAYMENTS_PROVIDER=disabled.
+Stripe test payments require a separate authorized security task. Public production
+deployment is not active; hosted acceptance remains outstanding.
 
 ## Acknowledgements
 

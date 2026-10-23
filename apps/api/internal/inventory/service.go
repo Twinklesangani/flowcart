@@ -103,7 +103,7 @@ func (s *Service) LowStockPage(ctx context.Context, tenant organization.TenantCo
 	if limit == 0 {
 		limit = 50
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > pagination.MaxLimit {
 		return LowStockPage{}, ErrInvalidInput
 	}
 	decoded, err := decodeLowStockCursor(cursor, tenant.OrganizationID)

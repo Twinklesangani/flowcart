@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/netip"
 	"os"
 	"strings"
 	"time"
 
-	"flowcart/apps/api/internal/auth"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -68,6 +68,17 @@ func run() error {
 	if !safeSeedEnvironment(appEnv) {
 		return fmt.Errorf("refusing to seed APP_ENV=%q", appEnv)
 	}
+	if err := validateSeedDatabaseTarget(appEnv, databaseURL); err != nil {
+		return err
+	}
+	passwords, err := loadSeedPasswords(appEnv)
+	if err != nil {
+		return err
+	}
+	passwordHashes, err := hashSeedPasswords(passwords)
+	if err != nil {
+		return err
+	}
 	ctx := context.Background()
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -75,11 +86,7 @@ func run() error {
 	}
 	defer pool.Close()
 	if err := pool.Ping(ctx); err != nil {
-		return fmt.Errorf("ping database: %w", err)
-	}
-	passwordHash, err := auth.HashPassword(demoPassword)
-	if err != nil {
-		return err
+		return errors.New("ping database failed; check connectivity and credentials")
 	}
 	data := makeSeedData()
 	tx, err := pool.Begin(ctx)
@@ -87,8 +94,13 @@ func run() error {
 		return fmt.Errorf("begin seed transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	if err := seedBase(ctx, tx, data, passwordHash); err != nil {
+	if err := seedBase(ctx, tx, data, passwordHashes); err != nil {
 		return err
+	}
+	if appEnv == "production" {
+		if err := verifySeedPasswords(ctx, tx, data, passwords); err != nil {
+			return err
+		}
 	}
 	if err := seedInventory(ctx, tx, data); err != nil {
 		return err
@@ -107,10 +119,8 @@ func run() error {
 	}
 	fmt.Println("FlowCart demo seed ready")
 	fmt.Printf("organization: %s (%s)\n", demoSlug, data.org)
-	fmt.Println("demo credentials (DEMO ONLY - NEVER USE IN PRODUCTION):")
-	fmt.Printf("  owner:   owner@flowcart.demo / %s\n", demoPassword)
-	fmt.Printf("  manager: manager@flowcart.demo / %s\n", demoPassword)
-	fmt.Printf("  viewer:  viewer@flowcart.demo / %s\n", demoPassword)
+	fmt.Println("demo accounts: owner@flowcart.demo, manager@flowcart.demo, viewer@flowcart.demo")
+	fmt.Println("Passwords are never printed. Production uses the supplied private credentials.")
 	return nil
 }
 
@@ -141,16 +151,16 @@ func makeSeedData() seedData {
 	return seedData{org: stable("organization:" + demoSlug), owner: stable("user:owner@flowcart.demo"), manager: stable("user:manager@flowcart.demo"), viewer: stable("user:viewer@flowcart.demo"), warehouses: warehouses, products: products, inventory: inventory}
 }
 
-func seedBase(ctx context.Context, tx pgx.Tx, d seedData, passwordHash string) error {
+func seedBase(ctx context.Context, tx pgx.Tx, d seedData, passwordHashes seedPasswords) error {
 	if err := exec(ctx, tx, `INSERT INTO organizations(id,name,slug) VALUES($1,$2,$3) ON CONFLICT(id) DO UPDATE SET name=EXCLUDED.name WHERE organizations.slug=$3`, d.org, "FlowCart Demo Retail", demoSlug); err != nil {
 		return err
 	}
 	users := []struct {
-		id                 uuid.UUID
-		email, first, last string
-	}{{d.owner, "owner@flowcart.demo", "Olivia", "Owner"}, {d.manager, "manager@flowcart.demo", "Morgan", "Manager"}, {d.viewer, "viewer@flowcart.demo", "Vera", "Viewer"}}
+		id                               uuid.UUID
+		email, first, last, passwordHash string
+	}{{d.owner, "owner@flowcart.demo", "Olivia", "Owner", passwordHashes.owner}, {d.manager, "manager@flowcart.demo", "Morgan", "Manager", passwordHashes.manager}, {d.viewer, "viewer@flowcart.demo", "Vera", "Viewer", passwordHashes.viewer}}
 	for _, u := range users {
-		if err := exec(ctx, tx, `INSERT INTO users(id,email,first_name,last_name,password_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name`, u.id, u.email, u.first, u.last, passwordHash); err != nil {
+		if err := exec(ctx, tx, `INSERT INTO users(id,email,first_name,last_name,password_hash) VALUES($1,$2,$3,$4,$5) ON CONFLICT(id) DO UPDATE SET first_name=EXCLUDED.first_name,last_name=EXCLUDED.last_name`, u.id, u.email, u.first, u.last, u.passwordHash); err != nil {
 			return err
 		}
 	}
@@ -483,4 +493,36 @@ func warehouseByCode(items []warehouse, code string) warehouse {
 
 func safeSeedEnvironment(value string) bool {
 	return value == "development" || value == "test" || value == "verification"
+}
+
+func validateSeedDatabaseTarget(appEnv, databaseURL string) error {
+	if !safeSeedEnvironment(appEnv) {
+		return fmt.Errorf("refusing to seed APP_ENV=%q", appEnv)
+	}
+	parsed, err := pgxpool.ParseConfig(databaseURL)
+	if err != nil {
+		return errors.New("refusing to seed: DATABASE_URL is not an allowed local PostgreSQL target")
+	}
+	host := strings.TrimSuffix(strings.ToLower(parsed.ConnConfig.Host), ".")
+	localHost := host == "localhost"
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil && address.IsLoopback() {
+		localHost = true
+	}
+	if !localHost || !allowedSeedDatabase(appEnv, parsed.ConnConfig.Database) {
+		return errors.New("refusing to seed: DATABASE_URL is not an allowed local PostgreSQL target")
+	}
+	return nil
+}
+
+func allowedSeedDatabase(appEnv, database string) bool {
+	switch appEnv {
+	case "development":
+		return database == "flowcart" || database == "flowcart_dev" || strings.HasPrefix(database, "flowcart_dev_")
+	case "test":
+		return database == "flowcart_test" || database == "flowcart_e2e" || strings.HasPrefix(database, "flowcart_test_") || strings.HasPrefix(database, "flowcart_e2e_")
+	case "verification":
+		return database == "flowcart_s4_verify" || database == "flowcart_verification" || strings.HasPrefix(database, "flowcart_verification_")
+	default:
+		return false
+	}
 }

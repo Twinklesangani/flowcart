@@ -6,7 +6,6 @@ import (
 	"flowcart/apps/api/internal/httpboundary"
 	"flowcart/apps/api/internal/pagination"
 	"net/http"
-	"strconv"
 
 	"flowcart/apps/api/internal/organization"
 
@@ -44,18 +43,10 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit, err := pagination.ParseLimit(r.URL.Query().Get("limit"))
+	limit, cursor, err := pagination.ParseQuery(r.URL.Query(), tenant.OrganizationID)
 	if err != nil {
 		writeErrorFromDomain(w, ErrInvalidInput)
 		return
-	}
-	var cursor pagination.Cursor
-	if raw := r.URL.Query().Get("cursor"); raw != "" {
-		cursor, err = pagination.DecodeCursor(raw, tenant.OrganizationID)
-		if err != nil {
-			writeErrorFromDomain(w, ErrInvalidInput)
-			return
-		}
 	}
 	var warehouseID, productID uuid.UUID
 	if raw := r.URL.Query().Get("warehouse_id"); raw != "" {
@@ -183,20 +174,18 @@ func (h *Handler) LowStock(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	limit := 50
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		parsed, err := strconv.Atoi(raw)
-		if err != nil {
-			writeErrorFromDomain(w, ErrInvalidInput)
-			return
-		}
-		if parsed < 1 || parsed > pagination.MaxLimit {
-			writeErrorFromDomain(w, ErrInvalidInput)
-			return
-		}
-		limit = parsed
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeErrorFromDomain(w, ErrInvalidInput)
+		return
 	}
-	page, err := h.service.LowStockPage(r.Context(), tenant, limit, r.URL.Query().Get("cursor"))
+	cursor, present, err := pagination.SingleValue(query, "cursor")
+	if err != nil || (present && cursor == "") {
+		writeErrorFromDomain(w, ErrInvalidInput)
+		return
+	}
+	page, err := h.service.LowStockPage(r.Context(), tenant, limit, cursor)
 	if err != nil {
 		writeErrorFromDomain(w, err)
 		return

@@ -1,142 +1,122 @@
 # Deployment Plan
 
-**Status: PLANNED / NOT YET DEPLOYED**
+**Status: FIRST DEMO PREPARATION / PRODUCTION DEPLOYMENT NOT ACTIVE**
 
-Public hosting is intentionally blocked until the remaining security gate is
-complete. This document records options, not an active deployment.
+This document records the approved architecture and completed checkpoints.
+It does not claim hosted production acceptance or security certification.
 
-## Current App Assessment
+## Approved architecture
 
-The web package currently uses Next.js `16.3.4`, React `19.2.8`, and the App
-Router. Pages are mostly static shells with client-side API requests; the
-session provider is client-side and the API owns the `HttpOnly` refresh cookie.
-There are no current `cookies()`, `headers()`, Server Actions, route handlers,
-or server-only database calls in `apps/web`.
+OpenNext + Cloudflare Worker serves the Next.js frontend and its same-origin
+/api proxy. The proxy forwards API requests to the Render Free Go/Chi service,
+which connects directly to the isolated Neon Free PostgreSQL demo database.
+The browser uses the Worker origin for both frontend and API calls.
 
-Cloudflare's current recommendation is **vinext**, but vinext is beta and is a
-Vite reimplementation of the Next.js API surface. The compatibility command
-for this existing app is `npx vinext check`; that check has not been run here.
-**OpenNext for Cloudflare** is the more conservative adapter for preserving
-the existing Next build. Its documentation supports all minor and patch
-versions of Next 16, App Router, dynamic routes, SSR, and Node.js runtime
-behavior. Neither adapter has been installed or configured in this worktree.
+OpenNext/Worker configuration is present in the repository. The Linux OpenNext
+production build is VERIFIED. Cloudflare provisioning and deployment have NOT
+STARTED. Vinext is not the selected deployment architecture. Static Cloudflare
+Pages export is not selected: dynamic routes such as /orders/[orderID] need the
+existing Worker runtime and hosted acceptance.
 
-Decision: evaluate vinext first in a branch or disposable CI job because it is
-Cloudflare's recommended path; retain OpenNext as the fallback if the
-compatibility check or browser suite finds a vinext gap. Do not deploy either
-until a Linux build and production-mode browser run pass.
+## Provider progress
 
-## Provisional Architecture
+| Component | Current checkpoint |
+|---|---|
+| Neon demo database | PROVISIONED AND VERIFIED; sanitized snapshot and auth/RBAC verified |
+| Render | GitHub repository access AVAILABLE; API service NOT CREATED / NOT DEPLOYED |
+| Cloudflare frontend | NOT STARTED |
+| Production deployment | NOT ACTIVE |
 
-```text
-Cloudflare Workers + vinext (OpenNext fallback)
-  -> Next.js frontend at app.example.com
-  -> HTTPS API origin at api.example.com
+Neon flowcart_demo is the isolated deployment target. Its migration checkpoint
+is 15 / false and its approved sanitized data has been restored. Do not rerun
+migrations or restore as part of ordinary API startup. The main local flowcart
+database remains untouched. Historical incident classification remains UNKNOWN.
 
-Render Free
-  -> Go/Chi API
-  -> managed secret configuration
+## Completed implementation and verification
 
-Neon Free
-  -> PostgreSQL database
-```
+- S4 — VERIFIED: frontend session isolation and refresh-family protection.
+- S5 — VERIFIED: payment reconciliation lifecycle startup/shutdown.
+- S6 — VERIFIED: collection and batch-limit hardening; see openapi.yaml.
+- S7 — DEFERRED / NOT APPLICABLE: email-based membership onboarding is not implemented.
+- R1 — FIXED: bounded Worker request-body buffering.
+- R2 — FIXED: TransfersView request-loop and stale-response handling.
+- Linux OpenNext production build — VERIFIED.
+- Worker bundle feasibility and provider/topology review — completed checkpoints;
+  current provider limits must still be checked for the actual deployment.
 
-This is a design target only. No provider account, domain, DNS record, or
-hosting resource has been created.
+Verification here records completed scoped checks. It does not substitute for
+acceptance on the deployed provider origins.
 
-## Frontend feasibility and plans
+## Runtime policy and secrets
 
-Cloudflare Pages static export is not selected. The dynamic
-`/orders/[orderID]` route and runtime API requests mean an export would not be
-a transparent deployment of the current app.
+The first demo uses APP_ENV=production and PAYMENTS_PROVIDER=disabled. Secure
+refresh cookies and production security controls stay enabled. No Stripe secrets,
+webhooks, or payment reconciliation are configured for this demo. Stripe test
+payments require a separate explicitly authorized security task; no production
+live-mode exception is permitted.
 
-### A) Existing custom domain
+Render must receive its own DATABASE_URL for the verified direct Neon target,
+a fresh strong JWT_SECRET, ACCESS_TOKEN_TTL=15m, and REFRESH_TOKEN_TTL=168h through
+provider secret/environment storage. Preserve TLS certificate and hostname
+verification. Never use the local development DATABASE_URL or commit credentials.
+No production credentials are committed.
 
-Use `app.example.com` for the Worker and `api.example.com` for the Go API.
-Keep the API on a separately managed HTTPS service and point only the app host
-at Cloudflare Workers. Configure the API with the exact app origin in
-`CORS_ALLOWED_ORIGINS`; configure `NEXT_PUBLIC_API_URL` as the API origin;
-then run the existing Playwright suite against those two HTTPS hosts.
+Production seeding is rejected before database connection. Only explicit local
+development/test/verification environments and allowlisted local targets are
+supported by seed. The approved sanitized snapshot supplied the Neon demo data;
+private password variables do not enable production seeding. Existing demo
+accounts are used without public self-registration or email-based member addition.
 
-The refresh cookie is host-only on `api.example.com`, `HttpOnly`, `Secure`,
-`SameSite=Lax`, and `Path=/`. `app.example.com` and `api.example.com` are
-different origins but the same site, so credentialed `fetch` sends the cookie
-to the API when the API response sets it. Do not add a broad `Domain` attribute
-unless there is a demonstrated need. Origin checks and CORS still apply.
+## Same-origin Worker proxy and cookies
 
-### B) No purchased domain, strictly $0
+Build the frontend with NEXT_PUBLIC_API_MODE=proxy and NEXT_PUBLIC_APP_ENV=production.
+Configure Worker API_ORIGIN with the actual HTTPS Render origin and APP_ORIGIN
+with the exact HTTPS frontend origin. Configure the API CORS_ALLOWED_ORIGINS with
+that same frontend origin. Do not invent a Worker hostname or use wildcard CORS.
+Until the frontend origin is established, record CORS_ORIGIN_PENDING_CLOUDFLARE
+and stop before enabling a publicly reachable production deployment.
 
-Use the platform-provided HTTPS hosts only after verifying their cookie
-relationship. A Worker `*.workers.dev` host and an independently hosted API
-host such as `*.onrender.com` are different sites, not merely different
-origins. The current `SameSite=Lax` host-only refresh cookie therefore cannot
-be relied on for the browser's cross-site `fetch` refresh flow.
+The Worker forwards auth requests and Set-Cookie responses. The browser receives
+a host-only HttpOnly, Secure, SameSite=Lax, Path=/ refresh cookie on the Worker
+origin. Keep the existing Origin checks and cookie policy. Direct cross-site
+browser calls from workers.dev to onrender.com are not the approved cookie flow.
+Do not weaken SameSite or add a broad cookie Domain as a workaround.
 
-The strictly $0 plan is consequently **not proven for this architecture**.
-Do not weaken the cookie to `SameSite=None` as an unverified workaround: it
-requires `Secure`, changes the CSRF threat model, and still needs explicit CORS
-and browser testing. The no-cost options are either to keep app and API under
-one provider-controlled site boundary, or to change the auth architecture to a
-same-origin reverse proxy/BFF; both require a provider-specific proof run.
-Without that proof, use local development only or purchase/use a domain for
-the same-site subdomain plan.
+Provider HTTPS domains are the first-demo direction. A custom domain is optional
+and requires a separate selection and DNS/TLS verification before use. If custom
+domains are later chosen, retain the approved proxy topology and verify the exact
+origins again. No custom domain or DNS configuration is complete.
 
-### Proof still required
+## Remaining deployment gates
 
-- Run `npx vinext check` and a Linux production build; compare the result with
-  `npx @opennextjs/cloudflare` and its Worker preview.
-- Verify Worker bundle size against the Cloudflare free-plan limit.
-- Browser-test login, refresh after access-token expiry, logout, and direct
-  refresh of `/orders/[orderID]` on the actual chosen hosts.
-- Verify provider free-tier quotas, custom-domain availability, and API
-  hosting/database pricing. These cannot be proven from this local worktree.
+- Review the final deployment commit and confirm GitHub contains the approved
+  source snapshot before configuring a service or triggering a build.
+- Configure Render's existing Go build/start entry point from apps/api, using
+  Render's PORT. Keep migrations explicit and seed out of startup.
+- Store and verify production/demo secrets only in provider configuration;
+  confirm the service targets Neon flowcart_demo with verified TLS.
+- Establish the exact HTTPS frontend origin and configure CORS and Worker origins.
+- Verify provider TLS termination, HTTPS redirects, and the intended HSTS policy.
+- Configure /health and verify HTTP 200 with database ok from the hosted API.
+- Review startup/runtime logs for accidental credential exposure.
+- Perform hosted browser acceptance: login, expiry/refresh, logout, RBAC,
+  session isolation, proxy behavior, and direct refresh of /orders/[orderID].
+- Validate Worker bundle/assets against current limits and measure hosted CPU,
+  memory, and request behavior; local build success does not prove hosted quotas.
+- Recheck current provider pricing, quotas, regions, and free-tier availability.
+  Account for Render cold starts/sleep and Neon compute/storage/egress limits,
+  including the effect of health checks on database activity. Free feasibility
+  is not a guarantee of unlimited or continuously available production hosting.
+- Complete provider backup/retention, recovery, and rollback procedures, including
+  a recovery rehearsal and an explicit procedure for future schema migrations.
+- Resolve any custom-domain/DNS decision separately; verify DNS, TLS, and cookie
+  behavior if a custom domain is introduced.
+- Complete hosted production security verification without treating earlier local
+  or Neon checks as security certification.
 
-## Hosted cookie and origin design
+## Deferred scope
 
-Use a custom same-site pair such as `app.example.com` and `api.example.com`.
-The refresh cookie stays host-only on the API origin, `HttpOnly`, `Secure`,
-`SameSite=Lax`, and `Path=/`. The browser sends it through credentialed fetches
-because the two origins are cross-origin but same-site. The API must allow only
-the exact frontend origin through `CORS_ALLOWED_ORIGINS`, and the existing
-authentication Origin checks remain enabled. Unrelated domains such as
-`pages.dev` plus `onrender.com` are not selected for the final cookie flow:
-they are cross-site and would not reliably carry the Lax refresh cookie.
-
-## Requirements Before Hosting
-
-- Complete S4 frontend session isolation.
-- Complete S5 payment reconciliation lifecycle startup work.
-- Complete S6 collection and batch limits.
-- Complete S7 email/membership security decision.
-- Run final security verification against production-like configuration.
-- Configure exact HTTPS CORS origins and secure refresh cookies.
-- Store `JWT_SECRET` and Stripe test/live credentials only in a secret manager.
-- Add database backup, migration, health, and rollback procedures.
-
-## Hosting Tradeoffs
-
-- **Cloudflare Workers + vinext:** Cloudflare's recommended beta path; requires
-  a compatibility check and may expose differences from Next.js runtime
-  behavior.
-- **Cloudflare Workers + OpenNext:** supports this Next 16 App Router app and
-  is the fallback with less migration pressure; still requires adapter
-  configuration, Linux validation, account setup, and custom-domain testing.
-- **Render Free:** simple API hosting, but cold starts, sleep behavior, and
-  connection limits require testing.
-- **Neon Free:** removes local database maintenance, but branch recovery,
-  connection pooling, retention, and limits require provider verification.
-- **AWS compute:** more control and a stronger production story, but more setup
-  and operational responsibility.
-- **Neon or another managed PostgreSQL service:** removes database maintenance,
-  but connection pooling, storage limits, and regional latency must be tested.
-
-No provider account, deployment credential, public URL, DNS record, or external
-service is connected by this plan. Free-tier availability and pricing are not
-verified.
-
-## Production Provisioning
-
-Public self-registration and email-based membership addition are disabled in
-production. Portfolio accounts must be provisioned through the controlled
-operator or demo process. Email verification and invitation acceptance are
-intentionally deferred until a verified delivery workflow exists.
+Email verification and invitation acceptance remain deferred until their security
+contract and delivery workflow are defined. Stripe tests remain a separate task.
+Redis, additional API providers, and AWS infrastructure are not required for this
+approved demo. No Render service or Cloudflare deployment is active.

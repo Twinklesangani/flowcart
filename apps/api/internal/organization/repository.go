@@ -3,6 +3,7 @@ package organization
 import (
 	"context"
 	"errors"
+	"flowcart/apps/api/internal/pagination"
 	"fmt"
 	"strings"
 	"time"
@@ -57,8 +58,11 @@ func (r *Repository) FindMembership(ctx context.Context, organizationID, userID 
 	}
 	return m, nil
 }
-func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID) ([]OrganizationSummary, error) {
-	rows, err := r.pool.Query(ctx, `SELECT o.id, o.name, o.slug, m.role FROM organizations o JOIN organization_members m ON m.organization_id=o.id WHERE m.user_id=$1 ORDER BY o.name`, userID)
+func (r *Repository) ListForUser(ctx context.Context, userID uuid.UUID, limit int) ([]OrganizationSummary, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
+	rows, err := r.pool.Query(ctx, `SELECT o.id, o.name, o.slug, m.role FROM organizations o JOIN organization_members m ON m.organization_id=o.id WHERE m.user_id=$1 ORDER BY o.name,o.id LIMIT $2`, userID, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -92,8 +96,11 @@ func (r *Repository) Update(ctx context.Context, id uuid.UUID, name, slug string
 	}
 	return o, err
 }
-func (r *Repository) ListMembers(ctx context.Context, id uuid.UUID) ([]Member, error) {
-	rows, err := r.pool.Query(ctx, `SELECT u.id,u.email,COALESCE(u.first_name,''),COALESCE(u.last_name,''),m.role,m.created_at FROM organization_members m JOIN users u ON u.id=m.user_id WHERE m.organization_id=$1 ORDER BY u.email`, id)
+func (r *Repository) ListMembers(ctx context.Context, id uuid.UUID, limit int) ([]Member, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
+	rows, err := r.pool.Query(ctx, `SELECT u.id,u.email,COALESCE(u.first_name,''),COALESCE(u.last_name,''),m.role,m.created_at FROM organization_members m JOIN users u ON u.id=m.user_id WHERE m.organization_id=$1 ORDER BY u.email,m.user_id LIMIT $2`, id, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +205,7 @@ func lockOrganization(ctx context.Context, tx pgx.Tx, organizationID uuid.UUID) 
 }
 
 func lockOwnerCount(ctx context.Context, tx pgx.Tx, organizationID uuid.UUID) (int, error) {
-	rows, err := tx.Query(ctx, `SELECT id FROM organization_members WHERE organization_id=$1 AND role='owner' FOR UPDATE`, organizationID)
+	rows, err := tx.Query(ctx, `SELECT id FROM organization_members WHERE organization_id=$1 AND role='owner' ORDER BY id LIMIT 2 FOR UPDATE`, organizationID)
 	if err != nil {
 		return 0, err
 	}

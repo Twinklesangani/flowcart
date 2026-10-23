@@ -5,9 +5,10 @@ import (
 	"errors"
 	"flowcart/apps/api/internal/httpboundary"
 	"net/http"
-	"strconv"
 
 	"flowcart/apps/api/internal/organization"
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -51,7 +52,17 @@ func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, ErrOrderNotFound)
 		return
 	}
-	items, err := h.service.List(r.Context(), tenant, orderID)
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeDomainError(w, ErrInvalidInput)
+		return
+	}
+	if _, present, queryErr := pagination.SingleValue(query, "cursor"); queryErr != nil || present {
+		writeDomainError(w, ErrInvalidInput)
+		return
+	}
+	items, err := h.service.List(r.Context(), tenant, orderID, limit)
 	if err != nil {
 		writeDomainError(w, err)
 		return
@@ -89,13 +100,15 @@ func (h *Handler) Movements(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, ErrNotFound)
 		return
 	}
-	limit := 50
-	if raw := r.URL.Query().Get("limit"); raw != "" {
-		limit, err = strconv.Atoi(raw)
-		if err != nil {
-			writeDomainError(w, ErrInvalidInput)
-			return
-		}
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeDomainError(w, ErrInvalidInput)
+		return
+	}
+	if _, present, queryErr := pagination.SingleValue(query, "cursor"); queryErr != nil || present {
+		writeDomainError(w, ErrInvalidInput)
+		return
 	}
 	items, err := h.service.Movements(r.Context(), tenant, id, limit)
 	if err != nil {

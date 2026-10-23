@@ -7,6 +7,8 @@ import (
 	"sort"
 
 	"flowcart/apps/api/internal/audit"
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -211,13 +213,20 @@ func (r *Repository) Create(ctx context.Context, organizationID, userID, orderID
 	return item, nil
 }
 func (r *Repository) List(ctx context.Context, organizationID, orderID uuid.UUID) ([]Payment, error) {
+	return r.ListLimited(ctx, organizationID, orderID, pagination.MaxLimit)
+}
+
+func (r *Repository) ListLimited(ctx context.Context, organizationID, orderID uuid.UUID, limit int) ([]Payment, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
 	var existingOrder uuid.UUID
 	if err := r.pool.QueryRow(ctx, `SELECT id FROM orders WHERE organization_id=$1 AND id=$2`, organizationID, orderID).Scan(&existingOrder); errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrOrderNotFound
 	} else if err != nil {
 		return nil, fmt.Errorf("find payment order: %w", err)
 	}
-	rows, err := r.pool.Query(ctx, `SELECT `+paymentColumns+` FROM payments WHERE organization_id=$1 AND order_id=$2 ORDER BY created_at`, organizationID, orderID)
+	rows, err := r.pool.Query(ctx, `SELECT `+paymentColumns+` FROM payments WHERE organization_id=$1 AND order_id=$2 ORDER BY created_at,id LIMIT $3`, organizationID, orderID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list payments: %w", err)
 	}

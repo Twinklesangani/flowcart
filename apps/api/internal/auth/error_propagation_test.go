@@ -37,7 +37,12 @@ func (r *failingAuthRepository) FindUserByID(context.Context, uuid.UUID) (User, 
 func (r *failingAuthRepository) RotateSession(context.Context, uuid.UUID, Session) error {
 	return r.err
 }
-func (r *failingAuthRepository) RevokeSession(context.Context, string) error { return r.err }
+func (r *failingAuthRepository) RevokeSession(context.Context, string) error {
+	if r.stage == "session" && errors.Is(r.err, ErrNotFound) || r.stage == "rotation" && errors.Is(r.err, ErrNotFound) {
+		return nil // model successful containment of a reused token
+	}
+	return r.err
+}
 
 func TestAuthenticationDistinguishesMissingDataFromDatabaseFailure(t *testing.T) {
 	dbErr := errors.New("database unavailable")

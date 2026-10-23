@@ -36,7 +36,7 @@ func TestSeedAmountsExpiryStableIdentitiesAndIgnoresUnrelatedRows(t *testing.T) 
 	var first []string
 	for run := 0; run < 2; run++ {
 		for _, step := range []func() error{
-			func() error { return seedBase(ctx, tx, d, "test-hash") },
+			func() error { return seedBase(ctx, tx, d, seedPasswords{"test-hash", "test-hash", "test-hash"}) },
 			func() error { return seedInventory(ctx, tx, d) },
 			func() error { return seedOrders(ctx, tx, d) },
 			func() error { return seedTransfers(ctx, tx, d) },

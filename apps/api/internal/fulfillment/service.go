@@ -10,12 +10,13 @@ import (
 
 	"flowcart/apps/api/internal/organization"
 	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 )
 
 type repository interface {
 	Complete(context.Context, organization.TenantContext, uuid.UUID, string, string, []uuid.UUID) (Fulfillment, error)
-	List(context.Context, uuid.UUID, uuid.UUID) ([]Fulfillment, error)
+	List(context.Context, uuid.UUID, uuid.UUID, int) ([]Fulfillment, error)
 	Get(context.Context, uuid.UUID, uuid.UUID) (Fulfillment, error)
 	ListMovements(context.Context, uuid.UUID, uuid.UUID, int) ([]InventoryMovement, error)
 }
@@ -47,11 +48,11 @@ func (s *Service) Complete(ctx context.Context, tenant organization.TenantContex
 	return s.repository.Complete(ctx, tenant, orderID, key, hex.EncodeToString(digest[:]), ids)
 }
 
-func (s *Service) List(ctx context.Context, tenant organization.TenantContext, orderID uuid.UUID) ([]Fulfillment, error) {
-	if orderID == uuid.Nil {
+func (s *Service) List(ctx context.Context, tenant organization.TenantContext, orderID uuid.UUID, limit int) ([]Fulfillment, error) {
+	if orderID == uuid.Nil || limit < 1 || limit > pagination.MaxLimit {
 		return nil, ErrInvalidInput
 	}
-	return s.repository.List(ctx, tenant.OrganizationID, orderID)
+	return s.repository.List(ctx, tenant.OrganizationID, orderID, limit)
 }
 
 func (s *Service) Get(ctx context.Context, tenant organization.TenantContext, id uuid.UUID) (Fulfillment, error) {
@@ -68,7 +69,7 @@ func (s *Service) Movements(ctx context.Context, tenant organization.TenantConte
 	if limit == 0 {
 		limit = 50
 	}
-	if limit < 1 || limit > 100 {
+	if limit < 1 || limit > pagination.MaxLimit {
 		return nil, ErrInvalidInput
 	}
 	return s.repository.ListMovements(ctx, tenant.OrganizationID, inventoryID, limit)

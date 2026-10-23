@@ -25,10 +25,14 @@ The same immutable policy serves CORS and register/login/refresh/logout checks.
 Browser Origin values must match it; absent Origin remains allowed for CLI clients.
 
 Production refresh cookies remain host-only, HttpOnly, Secure, SameSite=Lax,
-Path=/, with expiry/Max-Age. Local HTTP cookies omit Secure. Use same-site HTTPS
-frontend/API hosting with this cookie contract; unrelated sites are not supported
-by changing CORS alone. NEXT_PUBLIC_API_URL is an API origin, captured at frontend
-build time for both requests and CSP. Blank requires same-origin API routing.
+Path=/, with expiry/Max-Age. Local HTTP cookies omit Secure. The approved demo uses
+the OpenNext/Cloudflare Worker's same-origin /api proxy to Render. Browser calls
+stay on the Worker origin, which receives the forwarded host-only cookie.
+Use NEXT_PUBLIC_API_MODE=proxy and NEXT_PUBLIC_APP_ENV=production. The Worker
+requires exact HTTPS API_ORIGIN and APP_ORIGIN values; the API requires that same
+frontend origin in CORS_ALLOWED_ORIGINS. Direct cross-site browser calls cannot
+be made compatible with SameSite=Lax merely by changing CORS. Hosted cookie and
+proxy behavior still require acceptance on the actual provider origins.
 
 The API sends nosniff, no-referrer, and DENY framing headers. Auth no-store and
 transient checkout client-secret no-store are preserved. Next.js sends nosniff,
@@ -47,8 +51,14 @@ permits eval for tooling. Inline styles are allowed in production because the
 generated Next.js 404/global-error HTML uses them; external styles remain self-only.
 
 Seed requires an explicitly set development/test/verification environment plus
-FLOWCART_SEED_CONFIRM=FLOWCART_DEMO. Blank, staging, production, and typos are
-rejected before database connection. Seed business data is unchanged.
+FLOWCART_SEED_CONFIRM=FLOWCART_DEMO and an allowlisted local database target.
+Blank, staging, production, and typos are rejected before database connection.
+The target must be loopback/localhost with a database name allowed for that
+environment. Private password variables do not enable production seeding.
+Allowed local environments retain documented development demo defaults; the seed
+does not print passwords or overwrite existing account passwords. The isolated
+Neon demo database was populated from the verified sanitized snapshot, not by a
+production seed command. Do not seed it or rerun its completed migration/restore.
 
 S2 continues to use RemoteAddr and ignores X-Forwarded-For/X-Real-IP. Behind a
 proxy, its connection IP is shared by clients. Forwarded client IPs must not be
@@ -57,3 +67,23 @@ used until an explicit trusted-proxy policy is implemented for the chosen host.
 Run Go config/auth/httpboundary/httpapi/seed tests first, then full Go tests with
 a disposable database, vet and build. Run frontend lint, TypeScript checking and
 a production build; inspect actual production headers and hydration/static assets.
+
+## Verification status and remaining deployment gates
+
+- IMPLEMENTED: production configuration, Secure cookies, refresh-family
+  containment, seed target restrictions, mutation limits, and Stripe live-mode
+  enforcement. Demo policy is APP_ENV=production and PAYMENTS_PROVIDER=disabled;
+  no Stripe credentials or reconciliation are required for this demo.
+- VERIFIED: S4 session isolation/refresh-family protection, S5 reconciliation
+  lifecycle, and S6 collection/batch limits. R1 Worker buffering and R2 TransfersView
+  request-loop fixes are complete. Linux OpenNext build and the isolated Neon
+  snapshot/authentication/RBAC checks are verified checkpoints.
+- DEPLOYMENT VERIFICATION REQUIRED: provider secret storage, exact HTTPS origins,
+  TLS, health checks, log redaction, actual Worker proxy/cookie/browser behavior,
+  and backup/recovery/rollback. Render service is not created; Cloudflare frontend
+  is not started. Hosted production security is not yet verified.
+- DEFERRED: S7 email verification/invitation and membership onboarding, which are
+  not implemented and are not applicable to this demo's existing-account workflow.
+
+No production credentials are committed. Verification describes scoped checks;
+it is not a security certification. Production deployment is not active.

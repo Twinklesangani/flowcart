@@ -8,7 +8,8 @@ export default defineConfig({
   reporter: "list",
   use: {
     baseURL: process.env.WEB_URL ?? "http://127.0.0.1:3000",
-    trace: "retain-on-failure",
+    // Hosted traces can capture passwords, tokens, and refresh cookies.
+    trace: process.env.FLOWCART_HOSTED_TEST === "1" ? "off" : "retain-on-failure",
     video: "off",
     ...devices["Desktop Chrome"],
   },

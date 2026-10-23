@@ -4,15 +4,17 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"flowcart/apps/api/internal/pagination"
 	"strings"
 
 	"flowcart/apps/api/internal/organization"
+
 	"github.com/google/uuid"
 )
 
 type repository interface {
 	Create(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, string, string) (Payment, error)
-	List(context.Context, uuid.UUID, uuid.UUID) ([]Payment, error)
+	ListLimited(context.Context, uuid.UUID, uuid.UUID, int) ([]Payment, error)
 	Get(context.Context, uuid.UUID, uuid.UUID) (Payment, error)
 }
 
@@ -31,8 +33,11 @@ func (s *Service) Create(ctx context.Context, tenant organization.TenantContext,
 	digest := sha256.Sum256([]byte(orderID.String()))
 	return s.repository.Create(ctx, tenant.OrganizationID, tenant.UserID, orderID, key, hex.EncodeToString(digest[:]))
 }
-func (s *Service) List(ctx context.Context, tenant organization.TenantContext, orderID uuid.UUID) ([]Payment, error) {
-	return s.repository.List(ctx, tenant.OrganizationID, orderID)
+func (s *Service) List(ctx context.Context, tenant organization.TenantContext, orderID uuid.UUID, limit int) ([]Payment, error) {
+	if limit < 1 || limit > pagination.MaxLimit {
+		return nil, ErrInvalidInput
+	}
+	return s.repository.ListLimited(ctx, tenant.OrganizationID, orderID, limit)
 }
 func (s *Service) Get(ctx context.Context, tenant organization.TenantContext, paymentID uuid.UUID) (Payment, error) {
 	return s.repository.Get(ctx, tenant.OrganizationID, paymentID)

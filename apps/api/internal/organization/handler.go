@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flowcart/apps/api/internal/auth"
 	"flowcart/apps/api/internal/httpboundary"
+	"flowcart/apps/api/internal/pagination"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -56,7 +57,17 @@ func (h *Handler) Create(w http.ResponseWriter, r *http.Request) {
 }
 func (h *Handler) List(w http.ResponseWriter, r *http.Request) {
 	userID, _ := auth.UserIDFromContext(r.Context())
-	items, err := h.service.List(r.Context(), userID)
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeOrganizationError(w, ErrInvalidInput)
+		return
+	}
+	if _, present, queryErr := pagination.SingleValue(query, "cursor"); queryErr != nil || present {
+		writeOrganizationError(w, ErrInvalidInput)
+		return
+	}
+	items, err := h.service.List(r.Context(), userID, limit)
 	if err != nil {
 		writeOrganizationError(w, err)
 		return
@@ -106,7 +117,17 @@ func (h *Handler) Members(w http.ResponseWriter, r *http.Request) {
 		writeOrganizationError(w, ErrNotFound)
 		return
 	}
-	members, err := h.service.Members(r.Context(), userID, id)
+	query := r.URL.Query()
+	limit, err := pagination.ParseLimitValues(query)
+	if err != nil {
+		writeOrganizationError(w, ErrInvalidInput)
+		return
+	}
+	if _, present, queryErr := pagination.SingleValue(query, "cursor"); queryErr != nil || present {
+		writeOrganizationError(w, ErrInvalidInput)
+		return
+	}
+	members, err := h.service.Members(r.Context(), userID, id, limit)
 	if err != nil {
 		writeOrganizationError(w, err)
 		return

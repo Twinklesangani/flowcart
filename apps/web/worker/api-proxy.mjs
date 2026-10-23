@@ -1,5 +1,39 @@
 const forwardedRequestHeaders = ["accept", "content-type", "authorization", "cookie", "idempotency-key", "origin"];
 
+// Match the largest backend body allowance (Stripe webhook). Smaller Go route
+// limits still apply upstream. Count actual bytes even without Content-Length.
+export const maxProxyBodyBytes = 1 << 20;
+
+async function boundedBody(request) {
+  if (!request.body) return undefined;
+  const reader = request.body.getReader();
+  // One fixed buffer also bounds memory for streams yielding many tiny chunks.
+  const body = new Uint8Array(maxProxyBodyBytes);
+  let size = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.byteLength > maxProxyBodyBytes - size) {
+        void reader.cancel().catch(() => {});
+        return null;
+      }
+      body.set(value, size);
+      size += value.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return body.subarray(0, size);
+}
+
+function payloadTooLarge() {
+  return new Response(JSON.stringify({ error: { code: "payload_too_large", message: "Request body is too large." } }), {
+    status: 413,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
+}
+
 function upstreamOrigin(value) {
   const origin = new URL(value);
   if (!['http:', 'https:'].includes(origin.protocol) || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash) {
@@ -34,7 +68,13 @@ export async function proxyApi(request, env, fetchImpl = fetch) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await request.arrayBuffer();
+  const length = request.headers.get('Content-Length');
+  if (length !== null && /^\d+$/.test(length) && Number(length) > maxProxyBodyBytes) {
+    if (request.body) void request.body.cancel().catch(() => {});
+    return payloadTooLarge();
+  }
+  const body = request.method === 'GET' || request.method === 'HEAD' ? undefined : await boundedBody(request);
+  if (body === null) return payloadTooLarge();
   const response = await fetchImpl(new Request(target, { method: request.method, headers, body, redirect: 'manual' }));
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders(response) });
 }

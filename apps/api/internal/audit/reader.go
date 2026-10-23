@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"time"
 
+	"flowcart/apps/api/internal/pagination"
+
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -30,7 +32,7 @@ type Reader struct{ pool *pgxpool.Pool }
 func NewReader(pool *pgxpool.Pool) *Reader { return &Reader{pool: pool} }
 
 func (r *Reader) OrganizationEvents(ctx context.Context, organizationID uuid.UUID, filter Filter) (Page, error) {
-	if filter.Limit < 1 || filter.Limit > 100 {
+	if filter.Limit < 1 || filter.Limit > pagination.MaxLimit || len(filter.EventType) > pagination.MaxQueryValueLength || len(filter.ResourceType) > pagination.MaxQueryValueLength {
 		return Page{}, errors.New("invalid audit limit")
 	}
 	where := `WHERE organization_id=$1`
@@ -83,7 +85,7 @@ func (r *Reader) TransferTimeline(ctx context.Context, organizationID, transferI
 }
 
 func (r *Reader) timeline(ctx context.Context, predicate string, organizationID, resourceID uuid.UUID) ([]Event, error) {
-	rows, err := r.pool.Query(ctx, `SELECT a.id,a.organization_id,a.event_type,a.resource_type,a.resource_id,a.parent_resource_type,a.parent_resource_id,a.actor_type,a.actor_user_id,a.source_type,a.source_id,a.metadata,a.created_at FROM audit_events a WHERE a.organization_id=$1 AND `+predicate+` ORDER BY a.created_at ASC,a.id ASC`, organizationID, resourceID)
+	rows, err := r.pool.Query(ctx, `SELECT a.id,a.organization_id,a.event_type,a.resource_type,a.resource_id,a.parent_resource_type,a.parent_resource_id,a.actor_type,a.actor_user_id,a.source_type,a.source_id,a.metadata,a.created_at FROM audit_events a WHERE a.organization_id=$1 AND `+predicate+` ORDER BY a.created_at ASC,a.id ASC LIMIT $3`, organizationID, resourceID, pagination.MaxLimit)
 	if err != nil {
 		return nil, fmt.Errorf("read audit timeline: %w", err)
 	}
@@ -124,6 +126,9 @@ func encodeTenantCursor(organizationID uuid.UUID, createdAt time.Time, id uuid.U
 }
 
 func decodeCursor(value string) (time.Time, uuid.UUID, error) {
+	if value == "" || len(value) > pagination.MaxCursorLength {
+		return time.Time{}, uuid.Nil, errors.New("invalid cursor")
+	}
 	payload, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return time.Time{}, uuid.Nil, err
@@ -136,6 +141,9 @@ func decodeCursor(value string) (time.Time, uuid.UUID, error) {
 }
 
 func decodeTenantCursor(value string, organizationID uuid.UUID) (time.Time, uuid.UUID, error) {
+	if value == "" || len(value) > pagination.MaxCursorLength {
+		return time.Time{}, uuid.Nil, errors.New("invalid tenant cursor")
+	}
 	payload, err := base64.RawURLEncoding.DecodeString(value)
 	if err != nil {
 		return time.Time{}, uuid.Nil, err

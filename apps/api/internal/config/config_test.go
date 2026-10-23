@@ -106,3 +106,38 @@ func TestProductionSecretAndOrigins(t *testing.T) {
 		})
 	}
 }
+
+func TestProductionStripeRequiresExplicitLiveMode(t *testing.T) {
+	strong := "S3-fixture-0123456789-ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	for _, tc := range []struct {
+		name, live string
+		fail       bool
+	}{
+		{"explicit live", "true", false}, {"false", "false", true}, {"missing", "", true}, {"invalid", "yes", true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			configEnv(t)
+			t.Setenv("APP_ENV", "production")
+			t.Setenv("JWT_SECRET", strong)
+			t.Setenv("CORS_ALLOWED_ORIGINS", "https://app.example.com")
+			t.Setenv("PAYMENTS_PROVIDER", "stripe")
+			t.Setenv("STRIPE_SECRET_KEY", "sk_live_fixture")
+			t.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_fixture")
+			t.Setenv("STRIPE_EXPECTED_LIVEMODE", tc.live)
+			cfg, err := Load()
+			if (err != nil) != tc.fail {
+				t.Fatalf("unexpected validation: %v", err)
+			}
+			if err == nil && !cfg.StripeExpectedLivemode {
+				t.Fatal("production Stripe config did not select live mode")
+			}
+		})
+	}
+	configEnv(t)
+	t.Setenv("PAYMENTS_PROVIDER", "stripe")
+	t.Setenv("STRIPE_SECRET_KEY", "sk_test_fixture")
+	t.Setenv("STRIPE_WEBHOOK_SECRET", "whsec_fixture")
+	if cfg, err := Load(); err != nil || cfg.StripeExpectedLivemode {
+		t.Fatalf("development test-mode behavior changed: cfg=%+v err=%v", cfg, err)
+	}
+}
